@@ -113,7 +113,7 @@ obss_preprocessor = utils.ObssPreprocessor(args.receiver, envs[0].observation_sp
 sender = utils.load_model(args.sender, raise_not_found=False)
 if sender is None:
     if args.pretrained_sender:
-        sender = utils.load_modal(args.pretrained_sender, raise_not_found=True)
+        sender = utils.load_model(args.pretrained_sender, raise_not_found=True)
     else:
         sender = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
                          args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
@@ -122,7 +122,7 @@ if sender is None:
 receiver = utils.load_model(args.receiver, raise_not_found=False)
 if receiver is None:
     if args.pretrained_receiver:
-        receiver = utils.load_modal(args.pretrained_receiver, raise_not_found=True)
+        receiver = utils.load_model(args.pretrained_receiver, raise_not_found=True)
     else:
         receiver = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
                            args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
