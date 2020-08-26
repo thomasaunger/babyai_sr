@@ -90,14 +90,14 @@ model_name_parts = {
     'suffix': suffix}
 
 sender_name_parts         = model_name_parts.copy()
-sender_name_parts["info"] = "_sender"
+sender_name_parts["info"] = "_n%d_sender" % args.n
 default_sender_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**sender_name_parts)
 if args.pretrained_sender:
     default_sender_name = args.pretrained_sender + '_pretrained_' + default_sender_name
 args.sender = args.sender.format(**sender_name_parts) if args.sender else default_sender_name
 
 receiver_name_parts         = model_name_parts.copy()
-receiver_name_parts["info"] = "_receiver"
+receiver_name_parts["info"] = "_n%d_receiver" % args.n
 default_receiver_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**receiver_name_parts)
 if args.pretrained_receiver:
     default_receiver_name = args.pretrained_receiver + '_pretrained_' + default_receiver_name
