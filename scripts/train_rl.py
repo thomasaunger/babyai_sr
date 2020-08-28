@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Script to train a sender and receiver through reinforcment learning.
+Script to train a sender and receiver through reinforcement learning.
 """
 
 import os
