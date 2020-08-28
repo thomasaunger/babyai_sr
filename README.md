@@ -13,3 +13,5 @@ git clone https://github.com/thomasaunger/babyai_sr.git
 cd babyai_sr
 pip3 install --editable .
 ```
+
+In order to use the plotting scripts as-is, you’ll also need to install [LaTeX](https://www.latex-project.org).
