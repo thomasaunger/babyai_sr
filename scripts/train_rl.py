@@ -90,14 +90,18 @@ model_name_parts = {
     'suffix': suffix}
 
 sender_name_parts         = model_name_parts.copy()
-sender_name_parts["info"] = "_n%d%s%s_sender" % (args.n, "_no-comm" if args.no_comm else "", "_archimedean" if args.archimedean else "")
+sender_name_parts["info"] = "_n%d%s%s%s_sender" % (args.n, "_no-comm" if args.no_comm else "",
+                                                   "_ignorant" if args.ignorant_sender else "",
+                                                   "_archimedean" if args.archimedean else "")
 default_sender_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**sender_name_parts)
 if args.pretrained_sender:
     default_sender_name = args.pretrained_sender + '_pretrained_' + default_sender_name
 args.sender = args.sender.format(**sender_name_parts) if args.sender else default_sender_name
 
 receiver_name_parts         = model_name_parts.copy()
-receiver_name_parts["info"] = "_n%d%s%s_receiver" % (args.n, "_no-comm" if args.no_comm else "", "_archimedean" if args.archimedean else "")
+receiver_name_parts["info"] = "_n%d%s%s%s_receiver" % (args.n, "_no-comm" if args.no_comm else "",
+                                                       "_ignorant" if args.ignorant_sender else "",
+                                                       "_archimedean" if args.archimedean else "")
 default_receiver_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**receiver_name_parts)
 if args.pretrained_receiver:
     default_receiver_name = args.pretrained_receiver + '_pretrained_' + default_receiver_name
