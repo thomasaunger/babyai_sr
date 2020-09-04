@@ -22,4 +22,4 @@ This package is organized similarly to the original BabyAI repo. Models can be t
 
 The resulting models can be tested using `scripts/test_rl.py`, which also saves the episode data to an NPY file, which in turn can be visualized using the `vis` scripts.
 
-The learning curves as described by the log files can be plotted using `plot_curves.py`.
+The learning curves as described by the log files can be plotted using `scripts/plot_curves.py`.
