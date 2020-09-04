@@ -1,20 +1,26 @@
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from babyai_sr.rl.algos.base import BaseAlgo
 
 class PPOAlgo(BaseAlgo):
-    def __init__(self, envs, models, n, num_frames_per_proc=40, discount=0.99, lr=1e-4, beta1=0.9,
+    def __init__(self, env, models, num_frames_per_proc=40, discount=0.99, lr=1e-4, beta1=0.9,
                  beta2=0.999, gae_lambda=0.99, entropy_coef=0.01, value_loss_coef=0.5,
                  max_grad_norm=0.5, recurrence=20, adam_eps=1e-5, clip_eps=0.2, epochs=4,
                  batch_size=1280, preprocess_obss=None, reshape_reward=None, use_comm=True, archimedean=False, argmax=False, ignorant_sender=False):
         
-        super().__init__(envs, models, n, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef, value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, use_comm, archimedean, argmax, ignorant_sender)
+        super().__init__(env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, archimedean, argmax, ignorant_sender)
         
-        self.clip_eps   = clip_eps
-        self.epochs     = epochs
-        self.batch_size = batch_size
+        self.lr              = lr
+        self.entropy_coef    = entropy_coef
+        self.value_loss_coef = value_loss_coef
+        self.max_grad_norm   = max_grad_norm
+        self.recurrence      = recurrence
+        self.clip_eps        = clip_eps
+        self.epochs          = epochs
+        self.batch_size      = batch_size
+        
+        assert self.num_frames_per_proc % self.recurrence == 0
         
         assert self.batch_size % self.recurrence == 0
         

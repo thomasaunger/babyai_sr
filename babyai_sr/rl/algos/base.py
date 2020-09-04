@@ -1,25 +1,17 @@
-from abc import ABC, abstractmethod
 import torch
 
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList
 
-from babyai_sr.rl.utils.penv import ParallelEnv
-
-class BaseAlgo(ABC):
-    def __init__(self, env, models, n, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef, value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, use_comm, archimedean, argmax, ignorant_sender):
+class BaseAlgo():
+    def __init__(self, env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, archimedean, argmax, ignorant_sender):
         
         # Store parameters.
-        self.env                 = ParallelEnv(env, n)
+        self.env                 = env
         self.models              = models
         self.num_frames_per_proc = num_frames_per_proc
         self.discount            = discount
-        self.lr                  = lr
         self.gae_lambda          = gae_lambda
-        self.entropy_coef        = entropy_coef
-        self.value_loss_coef     = value_loss_coef
-        self.max_grad_norm       = max_grad_norm
-        self.recurrence          = recurrence
         self.preprocess_obss     = preprocess_obss or default_preprocess_obss
         self.reshape_reward      = reshape_reward
         self.use_comm            = use_comm
@@ -27,15 +19,10 @@ class BaseAlgo(ABC):
         self.argmax              = argmax
         self.ignorant_sender     = ignorant_sender
         
-        assert self.num_frames_per_proc % self.recurrence == 0
-        
-        for model in self.models:
-            model.train()
-        
         # Store helper values.
         self.device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.num_agents = len(models)
-        self.num_procs  = len(env)
+        self.num_procs  = env.num_procs
         self.num_frames = self.num_frames_per_proc * self.num_procs
         
         # Initialize experience values.
@@ -43,6 +30,7 @@ class BaseAlgo(ABC):
         
         self.mask       = torch.zeros(*shape[1:], device=self.device, dtype=torch.bool )
         self.masks      = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
+        self.dones      = torch.zeros(*shape[:2], device=self.device, dtype=torch.bool )
         self.activity   = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
         self.actions    = torch.zeros(*shape,     device=self.device, dtype=torch.uint8)
         self.values     = torch.zeros(*shape,     device=self.device)
@@ -59,10 +47,14 @@ class BaseAlgo(ABC):
         self.message  = torch.zeros(*shape[1:], self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         self.messages = torch.zeros(*shape,     self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         
-        active, self.globs, self.obs = self.env.reset()
+        active, self.globs, self.obs, extra = self.env.reset()
+        
         self.active       = torch.zeros(*shape[1:], device=self.device, dtype=torch.bool)
         self.active[:, 1] = torch.tensor(active, device=self.device, dtype=torch.bool)
         self.active[:, 0] = ~self.active[:, 1]
+        
+        self.extra  = torch.tensor(extra, device=self.device)
+        self.extras = torch.zeros(self.num_frames_per_proc, *self.extra.shape, device=self.device)
         
         # Initialize log values.
         self.log_episode_return     = torch.zeros(self.num_procs, device=self.device)
@@ -121,7 +113,7 @@ class BaseAlgo(ABC):
                         else:
                             log_prob[self.active[:, m], m] = model.speaker_log_prob(dists_speaker, message[self.active[:, m], m])
             
-            active, globs, obs, reward, done, _ = self.env.step(action[:, 1].cpu().numpy())
+            active, globs, obs, extra, reward, done = self.env.step(action[:, 1].cpu().numpy())
             
             # Update experience values.
             self.globss[f]    = self.globs
@@ -130,11 +122,16 @@ class BaseAlgo(ABC):
             self.obss[f]      = self.obs
             self.obs          = obs
             
+            self.extras[f]    = self.extra
+            self.extra        = torch.tensor(extra, device=self.device)
+            
             self.memories[f]  = self.memory
             self.memory       = memory
             
             self.masks[f]     = self.mask
             self.mask         = ~torch.tensor(done, device=self.device, dtype=torch.bool).unsqueeze(1)*~(~self.mask*~self.active)
+            
+            self.dones[f]     = torch.tensor(done, device=self.device, dtype=torch.bool)
             
             self.actions[f]   = action
             
@@ -238,8 +235,12 @@ class BaseAlgo(ABC):
                     for j in range(self.num_procs)
                     for i in range(self.num_frames_per_proc)]
         
-        # In commments below M is self.num_agents, T is self.num_frames_per_proc,
-        # P is self.num_procs and D is the dimensionality.
+        # In commments below, T is self.num_frames_per_proc,
+        # P is self.num_procs, M is self.num_agents and D is the dimensionality.
+        
+        # T x P x D -> P x T x D -> (P * T) x D
+        exps.extra = self.extras.transpose(0, 1).reshape(-1, *self.extras.shape[2:])
+        exps.done  = self.dones.transpose( 0, 1).reshape(-1, *self.dones.shape[ 2:])
         
         # T x P x M x D -> P x T x M x D -> (P * T) x M x D
         exps.memory  = self.memories.transpose(0, 1).reshape(-1, *self.memories.shape[2:])
@@ -256,7 +257,7 @@ class BaseAlgo(ABC):
         exps.advantage = self.advantages.transpose(0, 1).reshape(-1, *self.advantages.shape[2:])
         exps.returnn   = exps.value + exps.advantage
         exps.log_prob  = self.log_probs.transpose( 0, 1).reshape(-1, *self.log_probs.shape[ 2:])
-
+        
         # Preprocess experiences.
         exps.globs = self.preprocess_obss(exps.globs, device=self.device)
         exps.obs   = self.preprocess_obss(exps.obs,   device=self.device)
@@ -276,7 +277,3 @@ class BaseAlgo(ABC):
         self.log_num_frames   = self.log_num_frames[-self.num_procs:]
 
         return exps, log
-
-    @abstractmethod
-    def update_parameters(self):
-        pass
