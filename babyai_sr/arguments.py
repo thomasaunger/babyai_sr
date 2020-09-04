@@ -17,46 +17,28 @@ class ArgumentParser(argparse.ArgumentParser):
                             help="name of the environment to train on (REQUIRED)")
         self.add_argument("--seed", type=int, default=1,
                             help="random seed; if 0, a random random seed will be used  (default: 1)")
-        self.add_argument("--task-id-seed", action='store_true',
+        self.add_argument("--task-id-seed", action="store_true",
                             help="use the task id within a Slurm job array as the seed")
         self.add_argument("--procs", type=int, default=64,
                             help="number of processes (default: 64)")
-        self.add_argument("--tb", action="store_true", default=False,
-                            help="log into Tensorboard")
 
-        # Training arguments
-        self.add_argument("--log-interval", type=int, default=1,
-                            help="number of updates between two logs (default: 1)")
-        self.add_argument("--frames", type=int, default=int(9e10),
-                            help="number of frames of training (default: 9e10)")
-        self.add_argument("--frames-per-proc", type=int, default=160,#40,
+        # Algorithm arguments
+        self.add_argument("--frames-per-proc", type=int, default=160,
                             help="number of frames per process before update (default: 160)")
-        self.add_argument("--lr", type=float, default=1e-4,
-                            help="learning rate (default: 1e-4)")
-        self.add_argument("--beta1", type=float, default=0.9,
-                            help="beta1 for Adam (default: 0.9)")
-        self.add_argument("--beta2", type=float, default=0.999,
-                            help="beta2 for Adam (default: 0.999)")
-        self.add_argument("--recurrence", type=int, default=160,
-                            help="number of timesteps gradient is backpropagated (default: 160)")
-        self.add_argument("--optim-eps", type=float, default=1e-5,
-                            help="Adam and RMSprop optimizer epsilon (default: 1e-5)")
-        self.add_argument("--batch-size", type=int, default=5120,
-                                help="batch size for PPO (default: 5120)")
-        self.add_argument("--entropy-coef", type=float, default=0.01,
-                            help="entropy term coefficient (default: 0.01)")
-
-        # Model parameters
-        self.add_argument("--image-dim", type=int, default=512,
-                            help="dimensionality of the image embedding")
-        self.add_argument("--memory-dim", type=int, default=1024,
-                            help="dimensionality of the memory LSTM")
-        self.add_argument("--instr-dim", type=int, default=512,
-                            help="dimensionality of the memory LSTM")
-        self.add_argument("--enc-dim", type=int, default=512,
-                            help="dimensionality of the encoder LSTM")
-        self.add_argument("--dec-dim", type=int, default=512,
-                            help="dimensionality of the decoder LSTM")
+        self.add_argument("--discount", type=float, default=0.99,
+                            help="discount factor (default: 0.99)")
+        self.add_argument("--reward-scale", type=float, default=20.,
+                            help="Reward scale multiplier")
+        self.add_argument("--gae-lambda", type=float, default=0.99,
+                            help="lambda coefficient in GAE formula (default: 0.99, 1 means no gae)")
+        self.add_argument("--n", type=int, default=64,
+                            help="communication interval (default: 64)")
+        self.add_argument("--no-comm", action="store_true", default=False,
+                            help="don't use communication")
+        self.add_argument("--archimedean", action="store_true", default=False,
+                            help="use Archimedean receiver")
+        self.add_argument("--ignorant-sender", action="store_true", default=False,
+                            help="blinds the sender to the instruction")
 
     def parse_args(self):
         """
@@ -69,7 +51,7 @@ class ArgumentParser(argparse.ArgumentParser):
         if args.seed == 0:
             args.seed = np.random.randint(10000)
         if args.task_id_seed:
-            args.seed = int(os.environ['SLURM_ARRAY_TASK_ID'])
-            print('set seed to {}'.format(args.seed))
+            args.seed = int(os.environ["SLURM_ARRAY_TASK_ID"])
+            print("set seed to {}".format(args.seed))
 
         return args
