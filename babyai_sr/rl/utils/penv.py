@@ -1,5 +1,6 @@
-from multiprocessing import Process, Pipe
 import gym
+from gym_minigrid.minigrid import OBJECT_TO_IDX, COLOR_TO_IDX
+from multiprocessing import Process, Pipe
 
 def get_global(env, obs):
     # get global view
@@ -34,6 +35,41 @@ def get_local(obs):
     # get local view
     return obs["image"][3:4, 5:7, :]
 
+def get_agent_loc(env):
+    # get global view
+    grid = env.grid
+    
+    # position agent
+    x, y = env.agent_pos
+    
+    # rotate to match agent's orientation
+    for i in range(env.agent_dir + 1):
+        # rotate position of agent
+        x_new = y
+        y_new = grid.height - 1 - x
+        x     = x_new
+        y     = y_new
+    
+    agent_x = x
+    agent_y = y
+    
+    return agent_x, agent_y
+
+def get_goal(env):
+    goal_type  = OBJECT_TO_IDX[env.instrs.desc.type]
+    goal_color = COLOR_TO_IDX[env.instrs.desc.color]
+    
+    return goal_type, goal_color
+
+def get_goal_loc(globs):
+    x, y = (( 3 < globs["image"][:, :, 0]) * (globs["image"][:, :, 0] <  8) +
+            (13 < globs["image"][:, :, 0]) * (globs["image"][:, :, 0] < 18)).nonzero()
+    
+    goal_x = x[0]
+    goal_y = y[0]
+    
+    return goal_x, goal_y
+
 def worker(conn, env, n):
     while True:
         cmd, action, prev_result = conn.recv()
@@ -46,8 +82,12 @@ def worker(conn, env, n):
                     obs = env.reset()
                 active = env.step_count % n != 0
                 globs = obs.copy()
-                globs["image"]   = get_global(env, obs)
-                obs["image"]     = get_local(obs)
+                globs["image"] = get_global(env, obs)
+                obs["image"]   = get_local(obs)
+                agent_x, agent_y      = get_agent_loc(env)
+                goal_type, goal_color = get_goal(env)
+                goal_x, goal_y        = get_goal_loc(globs)
+                extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
             else:
                 # sender's frame
                 reward = 0.0
@@ -55,18 +95,19 @@ def worker(conn, env, n):
                 active = True
                 obs    = prev_result[2]
                 globs  = prev_result[1]
-                if 3 < len(prev_result):
-                    info   = prev_result[5]
-                else:
-                    info   = None
-            conn.send((active, globs, obs, reward, done, info))
+                extra  = prev_result[3]
+            conn.send((active, globs, obs, extra, reward, done))
         elif cmd == "reset":
             obs = env.reset()
             active = env.step_count % n != 0
             globs = obs.copy()
-            globs["image"]   = get_global(env, obs)
-            obs["image"]     = get_local(obs)
-            conn.send((active, globs, obs))
+            globs["image"] = get_global(env, obs)
+            obs["image"]   = get_local(obs)
+            agent_x, agent_y      = get_agent_loc(env)
+            goal_type, goal_color = get_goal(env)
+            goal_x, goal_y        = get_goal_loc(globs)
+            extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
+            conn.send((active, globs, obs, extra))
         else:
             raise NotImplementedError
 
@@ -77,6 +118,7 @@ class ParallelEnv(gym.Env):
         assert len(env) >= 1, "No environment given."
 
         self.env             = env
+        self.num_procs       = len(env)
         self.n               = n
         self.observation_space = self.env[0].observation_space
         self.action_space = self.env[0].action_space
@@ -100,7 +142,11 @@ class ParallelEnv(gym.Env):
         globs = obs.copy()
         globs["image"]   = get_global(self.env[0], obs)
         obs["image"]     = get_local(obs)
-        self.prev_results = [(active, globs, obs)] + [local.recv() for local in self.locals]
+        agent_x, agent_y      = get_agent_loc(self.env[0])
+        goal_type, goal_color = get_goal(self.env[0])
+        goal_x, goal_y        = get_goal_loc(globs)
+        extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
+        self.prev_results = [(active, globs, obs, extra)] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def step(self, actions):
@@ -116,6 +162,10 @@ class ParallelEnv(gym.Env):
             globs = obs.copy()
             globs["image"]   = get_global(self.env[0], obs)
             obs["image"]     = get_local(obs)
+            agent_x, agent_y      = get_agent_loc(self.env[0])
+            goal_type, goal_color = get_goal(self.env[0])
+            goal_x, goal_y        = get_goal_loc(globs)
+            extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
         else:
             # sender's frame
             reward = 0.0
@@ -123,11 +173,8 @@ class ParallelEnv(gym.Env):
             active = True
             obs    = self.prev_results[0][2]
             globs  = self.prev_results[0][1]
-            if 3 < len(self.prev_results[0]):
-                info   = self.prev_results[0][5]
-            else:
-                info   = None
-        self.prev_results = [(active, globs, obs, reward, done, info)] + [local.recv() for local in self.locals]
+            extra  = self.prev_results[0][3]
+        self.prev_results = [(active, globs, obs, extra, reward, done)] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def render(self):
