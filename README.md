@@ -14,4 +14,12 @@ cd babyai_sr
 pip3 install --editable .
 ```
 
-In order to use the plotting scripts as is, you’ll also need to install [LaTeX](https://www.latex-project.org).
+In order to use the plotting and visualization scripts as is, you’ll also need to install [LaTeX](https://www.latex-project.org).
+
+## Usage
+
+This package is organized similarly to the original BabyAI repo. Models can be trained using `scripts/train_rl.py`.
+
+The resulting models can be tested using `scripts/test_rl.py`, which also saves the episode data to an NPY file, which in turn can be visualized using the `vis` scripts.
+
+The learning curves as described by the log files can be plotted using `plot_curves.py`.
