@@ -210,11 +210,11 @@ class BaseAlgo(ABC):
             if torch.any(self.activity[i, :, 0]):
                 if i == self.num_frames_per_proc - 1:
                     next_value                                    = next_value[self.activity[i, :, 0], 1]
-                    self.advantages[i, self.activity[i, :, 0], 0] = self.discount * next_value * next_mask[self.activity[i, :, 0], 1] - self.values[i, self.activity[i, :, 0], 0]
+                    self.advantages[i, self.activity[i, :, 0], 0] = self.discount * next_value - self.values[i, self.activity[i, :, 0], 0]
                 else:
                     next_value                                    = next_value[self.activity[i, :, 0], 1]
-                    delta                                         = self.discount * next_value * next_mask[self.activity[i, :, 0], 1] - self.values[i, self.activity[i, :, 0], 0]
-                    self.advantages[i, self.activity[i, :, 0], 0] = delta + self.discount * self.gae_lambda * next_advantage[self.activity[i, :, 0], 1] * next_mask[self.activity[i, :, 0], 1]
+                    delta                                         = self.discount * next_value - self.values[i, self.activity[i, :, 0], 0]
+                    self.advantages[i, self.activity[i, :, 0], 0] = delta + self.discount * self.gae_lambda * next_advantage[self.activity[i, :, 0], 1]
             
             if i == self.num_frames_per_proc - 2:
                 if torch.any(self.activity[i + 1, :, 0]):
