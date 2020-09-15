@@ -102,7 +102,7 @@ class BaseAlgo():
                         dists_speaker                = model_results["dists_speaker"]
                         value[ self.active[:, m], m] = model_results["value"]
                         
-                        action[ self.active[:, m], m]  = dist.sample().byte()
+                        action[ self.active[:, m], m] = dist.sample().byte()
                         if self.argmax:
                             message[self.active[:, m], m] = torch.zeros(message[self.active[:, m], m].size()).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)
                         else:
