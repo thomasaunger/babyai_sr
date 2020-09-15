@@ -83,19 +83,19 @@ class BaseAlgo():
                         if m == 1:
                             if self.archimedean:
                                 if self.use_comm:
-                                    model_results = model(preprocessed_globs[self.active[:, m]], memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1), msg=message[self.active[:, m], 0])
+                                    model_results = model(preprocessed_globs[self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1), msg=self.message[self.active[:, m], 0])
                                 else:
-                                    model_results = model(preprocessed_globs[self.active[:, m]], memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
+                                    model_results = model(preprocessed_globs[self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
                             else:
                                 if self.use_comm:
-                                    model_results = model(preprocessed_obs[  self.active[:, m]], memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1), msg=message[self.active[:, m], 0])
+                                    model_results = model(preprocessed_obs[  self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1), msg=self.message[self.active[:, m], 0])
                                 else:
-                                    model_results = model(preprocessed_obs[  self.active[:, m]], memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
+                                    model_results = model(preprocessed_obs[  self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
                         else:
                             if self.ignorant_sender:
                                 preprocessed_globs.instr[self.active[:, m]] *= 0
                             
-                            model_results = model(preprocessed_globs[self.active[:, m]], memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
+                            model_results = model(preprocessed_globs[self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
                         
                         memory[self.active[:, m], m] = model_results["memory"]
                         dist                         = model_results["dist"]
@@ -178,19 +178,19 @@ class BaseAlgo():
                 if m == 1:
                     if self.archimedean:
                         if self.use_comm:
-                            model_results = model(preprocessed_globs, memory[:, m]*self.mask[:, m].unsqueeze(1), msg=message[:, 0])
+                            model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=self.message[:, 0])
                         else:
-                            model_results = model(preprocessed_globs, memory[:, m]*self.mask[:, m].unsqueeze(1))
+                            model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                     else:
                         if self.use_comm:
-                            model_results = model(preprocessed_obs,   memory[:, m]*self.mask[:, m].unsqueeze(1), msg=message[:, 0])
+                            model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=self.message[:, 0])
                         else:
-                            model_results = model(preprocessed_obs,   memory[:, m]*self.mask[:, m].unsqueeze(1))
+                            model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                 else:
                     if self.ignorant_sender:
                         preprocessed_globs.instr *= 0
                     
-                    model_results = model(preprocessed_globs, memory[:, m]*self.mask[:, m].unsqueeze(1))
+                    model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                 
                 next_value[:, m] = model_results["value"]
         
