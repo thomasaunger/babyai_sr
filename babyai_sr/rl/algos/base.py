@@ -106,7 +106,7 @@ class BaseAlgo():
                         if self.argmax:
                             message[self.active[:, m], m] = torch.zeros(message[self.active[:, m], m].size()).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)
                         else:
-                            message[self.active[:, m], m]  = dists_speaker.sample()
+                            message[self.active[:, m], m] = dists_speaker.sample()
                         
                         if m == 1:
                             log_prob[self.active[:, m], m] = dist.log_prob(action[self.active[:, m], m])
