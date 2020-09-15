@@ -24,8 +24,7 @@ class PPOAlgo(BaseAlgo):
         
         assert self.batch_size % self.recurrence == 0
         
-        params = [param for model in self.models for param in model.parameters()]
-        self.optimizer = torch.optim.Adam(params, lr, (beta1, beta2), eps=adam_eps)
+        self.optimizers = [torch.optim.Adam(model.parameters(), lr, (beta1, beta2), eps=adam_eps) for model in self.models]
         
         self.batch_num = 0
     
@@ -124,13 +123,11 @@ class PPOAlgo(BaseAlgo):
                 batch_loss        /= self.recurrence
                 
                 # Update actor--critic.
-                self.optimizer.zero_grad()
+                [optimizer.zero_grad() for optimizer in self.optimizers]
                 batch_loss.backward()
                 grad_norm = sum(p.grad.data.norm(2) ** 2 for model in self.models for p in model.parameters() if p.grad is not None) ** 0.5
-                grad_norm1 = sum(p.grad.data.norm(2) ** 2 for p in self.models[1].parameters() if p.grad is not None) ** 0.5
-                for model in self.models:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), self.max_grad_norm)
-                self.optimizer.step()
+                [torch.nn.utils.clip_grad_norm_(model.parameters(), self.max_grad_norm) for model in self.models]
+                [optimizer.step() for optimizer in self.optimizers]
                 
                 # Update log values.
                 log_entropies.append(batch_entropy)
