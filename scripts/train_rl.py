@@ -15,7 +15,8 @@ import torch
 import subprocess
 
 import babyai
-import babyai.utils as utils
+import babyai.utils    as utils
+import babyai_sr.utils as utils_sr
 
 from babyai_sr.arguments     import ArgumentParser
 from babyai_sr.model         import ACModel
@@ -172,6 +173,15 @@ algo = PPOAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, ar
                args.max_grad_norm, args.recurrence, args.optim_eps, args.clip_eps, args.ppo_epochs,
                args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.archimedean, False, args.ignorant_sender)
 
+if args.pretrained_sender:
+    algo.optimizers[0].load_state_dict(utils_sr.load_optimizer(args.pretrained_sender,   raise_not_found=True).state_dict())
+
+if args.pretrained_receiver:
+    algo.optimizers[1].load_state_dict(utils_sr.load_optimizer(args.pretrained_receiver, raise_not_found=True).state_dict())
+
+utils_sr.save_optimizer(algo.optimizers[0], args.sender  )
+utils_sr.save_optimizer(algo.optimizers[1], args.receiver)
+
 # Restore training status.
 status_path = os.path.join(utils.get_log_dir(args.receiver), "status.json")
 if os.path.exists(status_path):
@@ -276,3 +286,5 @@ while status["num_frames"] < args.frames:
             json.dump(status, dst)
             utils.save_model(sender,   args.sender  )
             utils.save_model(receiver, args.receiver)
+            utils_sr.save_optimizer(algo.optimizers[0], args.sender  )
+            utils_sr.save_optimizer(algo.optimizers[1], args.receiver)
