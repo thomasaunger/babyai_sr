@@ -113,7 +113,7 @@ class BaseAlgo():
                         else:
                             log_prob[self.active[:, m], m] = model.speaker_log_prob(dists_speaker, message[self.active[:, m], m])
             
-            active, globs, obs, extra, reward, done = self.env.step(action[:, 1].cpu().numpy())
+            active, globs, obs, extra, reward, done = self.env.step(action.cpu().numpy())
             
             # Update experience values.
             self.globss[f]    = self.globs
