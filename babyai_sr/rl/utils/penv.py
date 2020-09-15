@@ -150,11 +150,11 @@ class ParallelEnv(gym.Env):
         return zip(*self.prev_results)
 
     def step(self, actions):
-        for local, action, prev_result in zip(self.locals, actions[1:], self.prev_results[1:]):
+        for local, action, prev_result in zip(self.locals, actions[1:, 1], self.prev_results[1:]):
             local.send(("step", action, prev_result))
         if self.prev_results[0][0]:
             # receiver's frame
-            obs, reward, done, info = self.env[0].step(actions[0])
+            obs, reward, done, info = self.env[0].step(actions[0, 1])
             done = done or 64 <= self.env[0].step_count
             if done:
                 obs = self.env[0].reset()
