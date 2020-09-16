@@ -173,11 +173,19 @@ algo = PPOAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, ar
                args.max_grad_norm, args.recurrence, args.optim_eps, args.clip_eps, args.ppo_epochs,
                args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.archimedean, False, args.ignorant_sender)
 
-if args.pretrained_sender:
-    algo.optimizers[0].load_state_dict(utils_sr.load_optimizer(args.pretrained_sender,   raise_not_found=True).state_dict())
+optimizer_sender = utils_sr.load_optimizer(args.sender, raise_not_found=False)
+if optimizer_sender is None:
+    if args.pretrained_sender:
+        algo.optimizers[0].load_state_dict(utils_sr.load_optimizer(args.pretrained_sender, raise_not_found=True).state_dict())
+else:
+    algo.optimizers[0].load_state_dict(optimizer_sender.state_dict())
 
-if args.pretrained_receiver:
-    algo.optimizers[1].load_state_dict(utils_sr.load_optimizer(args.pretrained_receiver, raise_not_found=True).state_dict())
+optimizer_receiver = utils_sr.load_optimizer(args.receiver, raise_not_found=False)
+if optimizer_receiver is None:
+    if args.pretrained_receiver:
+        algo.optimizers[1].load_state_dict(utils_sr.load_optimizer(args.pretrained_receiver, raise_not_found=True).state_dict())
+else:
+    algo.optimizers[1].load_state_dict(optimizer_receiver.state_dict())
 
 utils_sr.save_optimizer(algo.optimizers[0], args.sender  )
 utils_sr.save_optimizer(algo.optimizers[1], args.receiver)
