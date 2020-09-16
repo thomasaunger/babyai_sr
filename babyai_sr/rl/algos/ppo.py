@@ -4,10 +4,10 @@ import torch
 from babyai_sr.rl.algos.base import BaseAlgo
 
 class PPOAlgo(BaseAlgo):
-    def __init__(self, env, models, num_frames_per_proc=40, discount=0.99, lr=1e-4, beta1=0.9,
+    def __init__(self, env, models, num_frames_per_proc=160, discount=0.99, lr=1e-4, beta1=0.9,
                  beta2=0.999, gae_lambda=0.99, entropy_coef=0.01, value_loss_coef=0.5,
-                 max_grad_norm=0.5, recurrence=20, adam_eps=1e-5, clip_eps=0.2, epochs=4,
-                 batch_size=1280, preprocess_obss=None, reshape_reward=None, use_comm=True, archimedean=False, argmax=False, ignorant_sender=False):
+                 max_grad_norm=0.5, recurrence=160, adam_eps=1e-5, clip_eps=0.2, epochs=4,
+                 batch_size=5120, preprocess_obss=None, reshape_reward=None, use_comm=True, archimedean=False, argmax=False, ignorant_sender=False):
         
         super().__init__(env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, archimedean, argmax, ignorant_sender)
         
