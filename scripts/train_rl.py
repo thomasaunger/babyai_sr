@@ -16,6 +16,8 @@ import subprocess
 
 import babyai
 import babyai.utils    as utils
+
+import babyai_sr
 import babyai_sr.utils as utils_sr
 
 from babyai_sr.arguments     import ArgumentParser
@@ -32,6 +34,8 @@ parser = ArgumentParser()
 # Base arguments
 parser.add_argument("--tb", action="store_true", default=False,
                     help="log into Tensorboard")
+parser.add_argument("--buffer", action="store_true", default=False,
+                    help="buffer logs before saving")
 
 # Model parameters
 parser.add_argument("--sender", default=None,
@@ -220,7 +224,7 @@ if first_created:
     csv_writer.writerow(header)
 
 # Log code state, command, availability of CUDA and models.
-babyai_code = list(babyai.__path__)[0]
+babyai_code = list(babyai_sr.__path__)[0]
 try:
     last_commit = subprocess.check_output(
         "cd {}; git log -n1".format(babyai_code), shell=True).decode("utf-8")
@@ -242,6 +246,8 @@ logger.info("CUDA available: {}".format(torch.cuda.is_available()))
 logger.info(sender)
 logger.info(receiver)
 
+datas = []
+
 # Train models.
 sender.train()
 receiver.train()
@@ -257,6 +263,10 @@ while status["num_frames"] < args.frames:
     status["i"]            += 1
 
     # Print logs.
+    
+    format_str = ("U {} | E {} | F {:06} | FPS {:04.0f} | D {} | R:xsmM {: .2f} {: .2f} {: .2f} {: .2f} | "
+                      "S {:.2f} | F:xsmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | "
+                      "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | ")
 
     if status["i"] % args.log_interval == 0:
         total_ellapsed_time = int(time.time() - total_start_time)
@@ -274,22 +284,34 @@ while status["num_frames"] < args.frames:
                 *num_frames_per_episode.values(),
                 logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"],
                 logs["loss"], logs["grad_norm"]]
-
-        format_str = ("U {} | E {} | F {:06} | FPS {:04.0f} | D {} | R:xsmM {: .2f} {: .2f} {: .2f} {: .2f} | "
-                      "S {:.2f} | F:xsmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | "
-                      "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | ")
-
-        logger.info(format_str.format(*data))
-        if args.tb:
-            assert len(header) == len(data)
-            for key, value in zip(header, data):
-                writer.add_scalar(key, float(value), status["num_frames"])
-
-        csv_writer.writerow(data)
         
-    # Save obss preprocessor vocabulary and models.
+        datas.append(data)
+        
+        if not args.buffer:
+            logger.info(format_str.format(*data))
+            if args.tb:
+                assert len(header) == len(data)
+                for key, value in zip(header, data):
+                    writer.add_scalar(key, float(value), status["num_frames"])
+        
+            csv_writer.writerow(data)
+    
+    # Save obss preprocessor vocabulary, buffered logs, models and optimizers.
     if args.save_interval > 0 and status["i"] % args.save_interval == 0:
         obss_preprocessor.vocab.save()
+        
+        if args.buffer:
+            logger.info("\n" + "\n".join([format_str.format(*data) for data in datas]))
+            if args.tb:
+                for data in datas:
+                    assert len(header) == len(data)
+                    for key, value in zip(header, data):
+                        writer.add_scalar(key, float(value), status["num_frames"])
+            
+            csv_writer.writerows(datas)
+
+        datas.clear()
+        
         with open(status_path, 'w') as dst:
             json.dump(status, dst)
             utils.save_model(sender,   args.sender  )
