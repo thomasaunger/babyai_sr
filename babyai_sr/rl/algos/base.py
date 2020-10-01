@@ -47,11 +47,10 @@ class BaseAlgo():
         self.message  = torch.zeros(*shape[1:], self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         self.messages = torch.zeros(*shape,     self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         
-        active, self.globs, self.obs, extra = self.env.reset()
+        active, sending, self.globs, self.obs, extra = self.env.reset()
         
-        self.active       = torch.zeros(*shape[1:], device=self.device, dtype=torch.bool)
-        self.active[:, 1] = torch.tensor(active, device=self.device, dtype=torch.bool)
-        self.active[:, 0] = ~self.active[:, 1]
+        self.active  = torch.tensor(active,  device=self.device, dtype=torch.bool)
+        self.sending = torch.tensor(sending, device=self.device, dtype=torch.bool)
         
         self.extra  = torch.tensor(extra, device=self.device)
         self.extras = torch.zeros(self.num_frames_per_proc, *self.extra.shape, device=self.device)
@@ -104,41 +103,41 @@ class BaseAlgo():
                         
                         action[ self.active[:, m], m] = dist.sample().byte()
                         if self.argmax:
-                            message[self.active[:, m], m] = torch.zeros(message[self.active[:, m], m].size()).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)
+                            message[self.active[:, m]*self.sending[:, m], m] = torch.zeros(message[self.active[:, m], m].size()).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)[self.sending[self.active[:, m], m]]
                         else:
-                            message[self.active[:, m], m] = dists_speaker.sample()
+                            message[self.active[:, m]*self.sending[:, m], m] = dists_speaker.sample()[self.sending[self.active[:, m], m]]
                         
                         if m == 1:
                             log_prob[self.active[:, m], m] = dist.log_prob(action[self.active[:, m], m])
                         else:
                             log_prob[self.active[:, m], m] = model.speaker_log_prob(dists_speaker, message[self.active[:, m], m])
             
-            active, globs, obs, extra, reward, done = self.env.step(action.cpu().numpy())
+            active, sending, globs, obs, extra, reward, done = self.env.step(action.cpu().numpy())
             
             # Update experience values.
-            self.globss[f]    = self.globs
-            self.globs        = globs
+            self.globss[f]   = self.globs
+            self.globs       = globs
             
-            self.obss[f]      = self.obs
-            self.obs          = obs
+            self.obss[f]     = self.obs
+            self.obs         = obs
             
-            self.extras[f]    = self.extra
-            self.extra        = torch.tensor(extra, device=self.device)
+            self.extras[f]   = self.extra
+            self.extra       = torch.tensor(extra, device=self.device)
             
-            self.memories[f]  = self.memory
-            self.memory       = memory
+            self.memories[f] = self.memory
+            self.memory      = memory
             
-            self.masks[f]     = self.mask
-            self.mask         = ~torch.tensor(done, device=self.device, dtype=torch.bool).unsqueeze(1)*~(~self.mask*~self.active)
+            self.masks[f]    = self.mask
+            self.mask        = ~torch.tensor(done, device=self.device, dtype=torch.bool).unsqueeze(1)*~(~self.mask*~self.active)
             
-            self.dones[f]     = torch.tensor(done, device=self.device, dtype=torch.bool)
+            self.dones[f]    = torch.tensor(done, device=self.device, dtype=torch.bool)
             
-            self.actions[f]   = action
+            self.actions[f]  = action
             
-            self.messages[f]  = self.message
-            self.message      = message
+            self.messages[f] = self.message
+            self.message     = message
             
-            self.values[f]    = value
+            self.values[f]   = value
             
             if self.reshape_reward is not None:
                 self.rewards[f, :, 1] = torch.tensor([
@@ -164,9 +163,9 @@ class BaseAlgo():
             self.log_episode_num_frames *= ~torch.tensor(done, device=self.device, dtype=torch.bool)
             
             # Update activity values.
-            self.activity[f]  = self.active
-            self.active[:, 1] = torch.tensor(active, device=self.device, dtype=torch.bool)
-            self.active[:, 0] = ~self.active[:, 1]
+            self.activity[f] = self.active
+            self.active      = torch.tensor(active,  device=self.device, dtype=torch.bool)
+            self.sending     = torch.tensor(sending, device=self.device, dtype=torch.bool)
         
         # Add advantage and return to experiences.
         next_value = torch.zeros(self.num_procs, self.num_agents, device=self.device)
@@ -199,29 +198,16 @@ class BaseAlgo():
         for i in reversed(range(self.num_frames_per_proc)):
             next_mask      = self.masks[     i + 1] if i < self.num_frames_per_proc - 1 else self.mask
             next_value     = self.values[    i + 1] if i < self.num_frames_per_proc - 1 else next_value
-            next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
+            next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else torch.zeros(self.advantages[i].size(), device=self.device)
+            
+            next_value[    self.activity[i, :, 0], 0] = next_value[    self.activity[i, :, 0], 1]
+            next_advantage[self.activity[i, :, 0], 0] = next_advantage[self.activity[i, :, 0], 1]
+            
+            self.values[    i, self.activity[i, :, 0], 1] = next_value[    self.activity[i, :, 0], 1]
+            self.advantages[i, self.activity[i, :, 0], 1] = next_advantage[self.activity[i, :, 0], 1]
             
             delta              = self.rewards[i] + self.discount * next_value * next_mask - self.values[i]
             self.advantages[i] = delta + self.discount * self.gae_lambda * next_advantage * next_mask
-            
-            if torch.any(self.activity[i, :, 0]):
-                if i == self.num_frames_per_proc - 1:
-                    next_value                                    = next_value[self.activity[i, :, 0], 1]
-                    self.advantages[i, self.activity[i, :, 0], 0] = self.discount * next_value - self.values[i, self.activity[i, :, 0], 0]
-                else:
-                    next_value                                    = next_value[self.activity[i, :, 0], 1]
-                    delta                                         = self.discount * next_value - self.values[i, self.activity[i, :, 0], 0]
-                    self.advantages[i, self.activity[i, :, 0], 0] = delta + self.discount * self.gae_lambda * next_advantage[self.activity[i, :, 0], 1]
-            
-            if i == self.num_frames_per_proc - 2:
-                if torch.any(self.activity[i + 1, :, 0]):
-                    next_value                                        = self.next_value[self.activity[i + 1, :, 0], 1]
-                    self.advantages[i, self.activity[i + 1, :, 0], 1] = self.rewards[i, self.activity[i + 1, :, 0], 1] + self.discount * next_value * self.mask[self.activity[i + 1, :, 0], 1] - self.values[i, self.activity[i + 1, :, 0], 1]
-            elif i < self.num_frames_per_proc - 2:
-                if torch.any(self.activity[i + 1, :, 0]):
-                    next_value                                        = self.values[i + 2, self.activity[i + 1, :, 0], 1]
-                    delta                                             = self.rewards[i, self.activity[i + 1, :, 0], 1] + self.discount * next_value * next_mask[self.activity[i + 1, :, 0], 1] - self.values[i, self.activity[i + 1, :, 0], 1]
-                    self.advantages[i, self.activity[i + 1, :, 0], 1] = delta + self.discount * self.gae_lambda * self.advantages[i + 2, self.activity[i + 1, :, 0], 1] * next_mask[self.activity[i + 1, :, 0], 1]
         
         # Flatten the data correctly, making sure that
         # each episode's data is a continuous chunk.
