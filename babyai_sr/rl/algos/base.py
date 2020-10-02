@@ -177,12 +177,12 @@ class BaseAlgo():
                 if m == 1:
                     if self.archimedean:
                         if self.use_comm:
-                            model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=self.message[:, 0])
+                            model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=message[:, 0])
                         else:
                             model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                     else:
                         if self.use_comm:
-                            model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=self.message[:, 0])
+                            model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=message[:, 0])
                         else:
                             model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                 else:
@@ -192,8 +192,12 @@ class BaseAlgo():
                     model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                 
                 next_value[:, m] = model_results["value"]
-        
-        self.next_value = next_value
+                dists_speaker    = model_results["dists_speaker"]
+                
+                if self.argmax:
+                    message[self.active[:, m]*self.sending[:, m], m] = torch.zeros(message[:, m].size()).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)[self.active[:, m]*self.sending[:, m]]
+                else:
+                    message[self.active[:, m]*self.sending[:, m], m] = dists_speaker.sample()[self.active[:, m]*self.sending[:, m]]
         
         for i in reversed(range(self.num_frames_per_proc)):
             next_mask      = self.masks[     i + 1] if i < self.num_frames_per_proc - 1 else self.mask
