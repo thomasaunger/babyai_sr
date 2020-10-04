@@ -1,6 +1,6 @@
 import torch
 
-from babyai_sr.rl.algos.base import BaseAlgo
+from babyai_sr.rl.algos import BaseAlgo
 
 class TestAlgo(BaseAlgo):
     def __init__(self, env, models, num_frames_per_proc=40, discount=0.99, gae_lambda=0.99, preprocess_obss=None, reshape_reward=None, use_comm=True, conventional=False, archimedean=False, argmax=True, informed_sender=False):

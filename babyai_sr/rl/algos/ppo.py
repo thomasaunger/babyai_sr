@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from babyai_sr.rl.algos.base import BaseAlgo
+from babyai_sr.rl.algos import BaseAlgo
 
 class PPOAlgo(BaseAlgo):
     def __init__(self, env, models, num_frames_per_proc=160, discount=0.99, lr=1e-4, beta1=0.9,
