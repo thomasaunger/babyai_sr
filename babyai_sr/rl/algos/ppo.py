@@ -20,6 +20,9 @@ class PPOAlgo(BaseAlgo):
         self.epochs          = epochs
         self.batch_size      = batch_size
         
+        if conventional:
+            assert self.num_frames_per_proc % 2 == 0
+        
         assert self.num_frames_per_proc % self.recurrence == 0
         
         assert self.batch_size % self.recurrence == 0
