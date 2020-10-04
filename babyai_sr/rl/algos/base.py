@@ -4,7 +4,7 @@ from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList
 
 class BaseAlgo():
-    def __init__(self, env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, archimedean, argmax, ignorant_sender):
+    def __init__(self, env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, conventional, archimedean, argmax, ignorant_sender):
         
         # Store parameters.
         self.env                 = env
@@ -15,6 +15,7 @@ class BaseAlgo():
         self.preprocess_obss     = preprocess_obss or default_preprocess_obss
         self.reshape_reward      = reshape_reward
         self.use_comm            = use_comm
+        self.conventional        = conventional
         self.archimedean         = archimedean
         self.argmax              = argmax
         self.ignorant_sender     = ignorant_sender
@@ -204,8 +205,15 @@ class BaseAlgo():
             next_value     = self.values[    i + 1] if i < self.num_frames_per_proc - 1 else next_value
             next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else torch.zeros(self.advantages[i].size(), device=self.device)
             
-            next_value[    self.activity[i, :, 0], 0] = next_value[    self.activity[i, :, 0], 1]
-            next_advantage[self.activity[i, :, 0], 0] = next_advantage[self.activity[i, :, 0], 1]
+            if self.conventional:
+                if i < self.num_frames_per_proc - 1:
+                    self.rewards[i, self.activity[i, :, 0], 0] = self.rewards[i + 1, self.activity[i, :, 0], 1]
+                
+                self.values[    i, self.activity[i, :, 1], 0] = next_value[    self.activity[i, :, 1], 0]
+                self.advantages[i, self.activity[i, :, 1], 0] = next_advantage[self.activity[i, :, 1], 0]
+            else:
+                next_value[    self.activity[i, :, 0], 0] = next_value[    self.activity[i, :, 0], 1]
+                next_advantage[self.activity[i, :, 0], 0] = next_advantage[self.activity[i, :, 0], 1]
             
             self.values[    i, self.activity[i, :, 0], 1] = next_value[    self.activity[i, :, 0], 1]
             self.advantages[i, self.activity[i, :, 0], 1] = next_advantage[self.activity[i, :, 0], 1]
