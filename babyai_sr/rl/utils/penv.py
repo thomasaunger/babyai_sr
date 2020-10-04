@@ -70,7 +70,7 @@ def get_goal_loc(globs):
     
     return goal_x, goal_y
 
-def worker(conn, env, n):
+def worker(conn, env, n, conventional):
     while True:
         cmd, action, prev_result = conn.recv()
         if cmd == "step":
@@ -80,10 +80,10 @@ def worker(conn, env, n):
                 done = done or 64 <= env.step_count
                 if done:
                     obs = env.reset()
-                active_sender = env.step_count % n == 0
+                active_sender = True if conventional else env.step_count % n == 0
                 active_receiver = not active_sender
                 active = (active_sender, active_receiver)
-                sending = (active_sender, False)
+                sending = (env.step_count % n == 0, False) if conventional else (active_sender, False)
                 globs = obs.copy()
                 globs["image"] = get_global(env, obs)
                 obs["image"]   = get_local(obs)
@@ -123,12 +123,13 @@ def worker(conn, env, n):
 class ParallelEnv(gym.Env):
     """A concurrent execution of environments in multiple processes."""
 
-    def __init__(self, env, n):
+    def __init__(self, env, n, conventional):
         assert len(env) >= 1, "No environment given."
 
         self.env             = env
         self.num_procs       = len(env)
         self.n               = n
+        self.conventional    = conventional
         self.observation_space = self.env[0].observation_space
         self.action_space = self.env[0].action_space
         
@@ -137,7 +138,7 @@ class ParallelEnv(gym.Env):
         for i, env in enumerate(self.env[1:]):
             local, remote = Pipe()
             self.locals.append(local)
-            p = Process(target=worker, args=(remote, env, n))
+            p = Process(target=worker, args=(remote, env, n, conventional))
             p.daemon = True
             p.start()
             remote.close()
@@ -170,10 +171,10 @@ class ParallelEnv(gym.Env):
             done = done or 64 <= self.env[0].step_count
             if done:
                 obs = self.env[0].reset()
-            active_sender = self.env[0].step_count % self.n == 0
+            active_sender = True if self.conventional else self.env[0].step_count % self.n == 0
             active_receiver = not active_sender
             active = (active_sender, active_receiver)
-            sending = (active_sender, False)
+            sending = (self.env[0].step_count % self.n == 0, False) if self.conventional else (active_sender, False)
             globs = obs.copy()
             globs["image"]   = get_global(self.env[0], obs)
             obs["image"]     = get_local(obs)
