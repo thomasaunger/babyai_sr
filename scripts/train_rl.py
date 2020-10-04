@@ -58,7 +58,7 @@ parser.add_argument("--len-message", type=int, default=8,
 parser.add_argument("--num-symbols", type=int, default=8,
                     help="number of symbols (default: 8)")
 parser.add_argument("--single-angle", action="store_true", default=False,
-                    help="let the sender observe the environment from all angles")
+                    help="let the sender observe the environment from a single angle")
 
 # Training arguments
 parser.add_argument("--log-interval", type=int, default=1,
