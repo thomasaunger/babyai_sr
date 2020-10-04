@@ -35,6 +35,8 @@ class ArgumentParser(argparse.ArgumentParser):
                             help="communication interval (default: 64)")
         self.add_argument("--no-comm", action="store_true", default=False,
                             help="don't use communication")
+        self.add_argument("--conventional", action="store_true", default=False,
+                            help="reward sender using environment instead of receiver state-value estimate")
         self.add_argument("--archimedean", action="store_true", default=False,
                             help="use Archimedean receiver")
         self.add_argument("--ignorant-sender", action="store_true", default=False,
