@@ -39,8 +39,8 @@ class ArgumentParser(argparse.ArgumentParser):
                             help="reward sender using environment instead of receiver state-value estimate")
         self.add_argument("--archimedean", action="store_true", default=False,
                             help="use Archimedean receiver")
-        self.add_argument("--ignorant-sender", action="store_true", default=False,
-                            help="blinds the sender to the instruction")
+        self.add_argument("--informed-sender", action="store_true", default=False,
+                            help="allows sender to see the instruction")
 
     def parse_args(self):
         """
