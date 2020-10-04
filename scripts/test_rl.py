@@ -25,6 +25,8 @@ parser.add_argument("--sender", default=None,
                     help="name of the sender (REQUIRED)")
 parser.add_argument("--receiver", default=None,
                     help="name of the receiver (REQUIRED)")
+parser.add_argument("--sample", action="store_true", default=False,
+                    help="sample messages instead of using argmax")
 parser.add_argument("--episodes", type=int, default=1000,
                     help="number of episodes to test on (default: 1000)")
 
@@ -38,7 +40,7 @@ for i in range(args.procs):
     env.seed(100 * args.seed + i)
     envs.append(env)
 
-penv = ParallelEnv(envs, args.n)
+penv = ParallelEnv(envs, args.n, args.conventional)
 
 # Define obss preprocessor.
 obss_preprocessor = utils.ObssPreprocessor(args.receiver, envs[0].observation_space)
@@ -53,7 +55,7 @@ if torch.cuda.is_available():
 
 # Define actor--critic algorithm.
 reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
-test_algo = TestAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.gae_lambda, obss_preprocessor, reshape_reward, not args.no_comm, args.archimedean, True, args.ignorant_sender)
+test_algo = TestAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.gae_lambda, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, not args.sample, args.ignorant_sender)
 
 # Test models.
 sender.eval()

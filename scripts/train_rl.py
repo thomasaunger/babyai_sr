@@ -23,7 +23,6 @@ import babyai_sr.utils as utils_sr
 from babyai_sr.arguments     import ArgumentParser
 from babyai_sr.model         import ACModel
 from babyai_sr.rl.algos.ppo  import PPOAlgo
-from babyai_sr.rl.algos.test import TestAlgo
 from babyai_sr.rl.utils.penv import ParallelEnv
 
 import babyai_sr.levels.sr_levels
@@ -60,7 +59,7 @@ parser.add_argument("--len-message", type=int, default=8,
                     help="lengths of messages (default: 8)")
 parser.add_argument("--num-symbols", type=int, default=8,
                     help="number of symbols (default: 8)")
-parser.add_argument("--all-angles", action="store_true", default=True,
+parser.add_argument("--single-angle", action="store_true", default=False,
                     help="let the sender observe the environment from all angles")
 
 # Training arguments
@@ -104,7 +103,7 @@ for i in range(args.procs):
     env.seed(100 * args.seed + i)
     envs.append(env)
 
-penv = ParallelEnv(envs, args.n)
+penv = ParallelEnv(envs, args.n, args.conventional)
 
 # Define model names.
 suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
@@ -120,18 +119,20 @@ model_name_parts = {
     "suffix": suffix}
 
 sender_name_parts         = model_name_parts.copy()
-sender_name_parts["info"] = "_n%d%s%s%s_sender" % (args.n, "_no-comm" if args.no_comm else "",
-                                                   "_ignorant" if args.ignorant_sender else "",
-                                                   "_archimedean" if args.archimedean else "")
+sender_name_parts["info"] = "_n%d%s%s%s%s_sender" % (args.n, "_no-comm" if args.no_comm else "",
+                                                     "_conventional" if args.conventional else "",
+                                                     "_ignorant" if args.ignorant_sender else "",
+                                                     "_archimedean" if args.archimedean else "")
 default_sender_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**sender_name_parts)
 if args.pretrained_sender:
     default_sender_name = args.pretrained_sender + "_pretrained_" + default_sender_name
 args.sender = args.sender.format(**sender_name_parts) if args.sender else default_sender_name
 
 receiver_name_parts         = model_name_parts.copy()
-receiver_name_parts["info"] = "_n%d%s%s%s_receiver" % (args.n, "_no-comm" if args.no_comm else "",
-                                                       "_ignorant" if args.ignorant_sender else "",
-                                                       "_archimedean" if args.archimedean else "")
+receiver_name_parts["info"] = "_n%d%s%s%s%s_receiver" % (args.n, "_no-comm" if args.no_comm else "",
+                                                         "_conventional" if args.conventional else "",
+                                                         "_ignorant" if args.ignorant_sender else "",
+                                                         "_archimedean" if args.archimedean else "")
 default_receiver_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**receiver_name_parts)
 if args.pretrained_receiver:
     default_receiver_name = args.pretrained_receiver + "_pretrained_" + default_receiver_name
@@ -151,7 +152,7 @@ if sender is None:
     else:
         sender = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
                          args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
-                         args.len_message, args.num_symbols, args.all_angles)
+                         args.len_message, args.num_symbols, not args.single_angle)
 
 receiver = utils.load_model(args.receiver, raise_not_found=False)
 if receiver is None:
@@ -175,7 +176,7 @@ reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
 algo = PPOAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.lr, args.beta1,
                args.beta2, args.gae_lambda, args.entropy_coef, args.value_loss_coef,
                args.max_grad_norm, args.recurrence, args.optim_eps, args.clip_eps, args.ppo_epochs,
-               args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.archimedean, False, args.ignorant_sender)
+               args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, False, args.ignorant_sender)
 
 optimizer_sender = utils_sr.load_optimizer(args.sender, raise_not_found=False)
 if optimizer_sender is None:
