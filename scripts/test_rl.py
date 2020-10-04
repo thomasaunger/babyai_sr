@@ -12,11 +12,9 @@ import numpy as np
 
 import babyai.utils as utils
 
-from babyai_sr.arguments     import ArgumentParser
-from babyai_sr.rl.algos.test import TestAlgo
-from babyai_sr.rl.utils.penv import ParallelEnv
-
-import babyai_sr.levels.sr_levels
+from babyai_sr.arguments import ArgumentParser
+from babyai_sr.rl.algos  import TestAlgo
+from babyai_sr.rl.utils  import ParallelEnv
 
 # Parse arguments.
 parser = ArgumentParser()
