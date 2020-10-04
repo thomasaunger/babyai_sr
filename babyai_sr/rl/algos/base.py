@@ -4,7 +4,7 @@ from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList
 
 class BaseAlgo():
-    def __init__(self, env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, conventional, archimedean, argmax, ignorant_sender):
+    def __init__(self, env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, conventional, archimedean, informed_sender, argmax):
         
         # Store parameters.
         self.env                 = env
@@ -18,7 +18,7 @@ class BaseAlgo():
         self.conventional        = conventional
         self.archimedean         = archimedean
         self.argmax              = argmax
-        self.ignorant_sender     = ignorant_sender
+        self.informed_sender     = informed_sender
         
         # Store helper values.
         self.device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -92,7 +92,7 @@ class BaseAlgo():
                                 else:
                                     model_results = model(preprocessed_obs[  self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
                         else:
-                            if self.ignorant_sender:
+                            if not self.informed_sender:
                                 preprocessed_globs.instr[self.active[:, m]] *= 0
                             
                             model_results = model(preprocessed_globs[self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
@@ -187,7 +187,7 @@ class BaseAlgo():
                         else:
                             model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                 else:
-                    if self.ignorant_sender:
+                    if not self.informed_sender:
                         preprocessed_globs.instr *= 0
                     
                     model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1))
