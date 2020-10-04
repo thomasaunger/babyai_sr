@@ -55,7 +55,7 @@ if torch.cuda.is_available():
 
 # Define actor--critic algorithm.
 reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
-test_algo = TestAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.gae_lambda, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, not args.sample, args.ignorant_sender)
+test_algo = TestAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.gae_lambda, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, args.informed_sender, not args.sample)
 
 # Test models.
 sender.eval()

@@ -121,7 +121,7 @@ model_name_parts = {
 sender_name_parts         = model_name_parts.copy()
 sender_name_parts["info"] = "_n%d%s%s%s%s_sender" % (args.n, "_no-comm" if args.no_comm else "",
                                                      "_conventional" if args.conventional else "",
-                                                     "_ignorant" if args.ignorant_sender else "",
+                                                     "_informed" if args.informed_sender else "",
                                                      "_archimedean" if args.archimedean else "")
 default_sender_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**sender_name_parts)
 if args.pretrained_sender:
@@ -131,7 +131,7 @@ args.sender = args.sender.format(**sender_name_parts) if args.sender else defaul
 receiver_name_parts         = model_name_parts.copy()
 receiver_name_parts["info"] = "_n%d%s%s%s%s_receiver" % (args.n, "_no-comm" if args.no_comm else "",
                                                          "_conventional" if args.conventional else "",
-                                                         "_ignorant" if args.ignorant_sender else "",
+                                                         "_informed" if args.informed_sender else "",
                                                          "_archimedean" if args.archimedean else "")
 default_receiver_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**receiver_name_parts)
 if args.pretrained_receiver:
@@ -176,7 +176,7 @@ reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
 algo = PPOAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.lr, args.beta1,
                args.beta2, args.gae_lambda, args.entropy_coef, args.value_loss_coef,
                args.max_grad_norm, args.recurrence, args.optim_eps, args.clip_eps, args.ppo_epochs,
-               args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, False, args.ignorant_sender)
+               args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, args.informed_sender)
 
 optimizer_sender = utils_sr.load_optimizer(args.sender, raise_not_found=False)
 if optimizer_sender is None:
