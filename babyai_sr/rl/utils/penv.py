@@ -70,7 +70,7 @@ def get_goal_loc(globs):
     
     return goal_x, goal_y
 
-def worker(conn, env, n, conventional):
+def worker(conn, env, n, conventional, archimedean, informed_sender):
     while True:
         cmd, action, prev_result = conn.recv()
         if cmd == "step":
@@ -87,6 +87,9 @@ def worker(conn, env, n, conventional):
                 globs = obs.copy()
                 globs["image"] = get_global(env, obs)
                 obs["image"]   = get_local(obs)
+                obss = (globs, obs) if not archimedean else (obs, globs)
+                if not informed_sender:
+                    obss[0]["mission"] = "unknown"
                 agent_x, agent_y      = get_agent_loc(env)
                 goal_type, goal_color = get_goal(env)
                 goal_x, goal_y        = get_goal_loc(globs)
@@ -99,10 +102,9 @@ def worker(conn, env, n, conventional):
                 active_receiver = not active_sender
                 active = (active_sender, active_receiver)
                 sending = (active_sender, False)
-                obs    = prev_result[3]
-                globs  = prev_result[2]
-                extra  = prev_result[4]
-            conn.send((active, sending, globs, obs, extra, reward, done))
+                obss   = prev_result[2]
+                extra  = prev_result[3]
+            conn.send((active, sending, obss, extra, reward, done))
         elif cmd == "reset":
             obs = env.reset()
             active_sender = env.step_count % n == 0
@@ -112,33 +114,38 @@ def worker(conn, env, n, conventional):
             globs = obs.copy()
             globs["image"] = get_global(env, obs)
             obs["image"]   = get_local(obs)
+            obss = (globs, obs) if not archimedean else (obs, globs)
+            if not informed_sender:
+                obss[0]["mission"] = "unknown"
             agent_x, agent_y      = get_agent_loc(env)
             goal_type, goal_color = get_goal(env)
             goal_x, goal_y        = get_goal_loc(globs)
             extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-            conn.send((active, sending, globs, obs, extra))
+            conn.send((active, sending, obss, extra))
         else:
             raise NotImplementedError
 
 class ParallelEnv(gym.Env):
     """A concurrent execution of environments in multiple processes."""
 
-    def __init__(self, env, n, conventional):
+    def __init__(self, env, n, conventional, archimedean, informed_sender):
         assert len(env) >= 1, "No environment given."
 
-        self.env             = env
-        self.num_procs       = len(env)
-        self.n               = n
-        self.conventional    = conventional
+        self.env               = env
+        self.num_procs         = len(env)
+        self.n                 = n
+        self.conventional      = conventional
+        self.archimedean       = archimedean
+        self.informed_sender   = informed_sender
         self.observation_space = self.env[0].observation_space
-        self.action_space = self.env[0].action_space
+        self.action_space      = self.env[0].action_space
         
         self.locals = []
         self.processes = []
         for i, env in enumerate(self.env[1:]):
             local, remote = Pipe()
             self.locals.append(local)
-            p = Process(target=worker, args=(remote, env, n, conventional))
+            p = Process(target=worker, args=(remote, env, n, conventional, archimedean, informed_sender))
             p.daemon = True
             p.start()
             remote.close()
@@ -153,13 +160,16 @@ class ParallelEnv(gym.Env):
         active = (active_sender, active_receiver)
         sending = (active_sender, False)
         globs = obs.copy()
-        globs["image"]   = get_global(self.env[0], obs)
-        obs["image"]     = get_local(obs)
+        globs["image"] = get_global(self.env[0], obs)
+        obs["image"]   = get_local(obs)
+        obss = (globs, obs) if not self.archimedean else (obs, globs)
+        if not self.informed_sender:
+            obss[0]["mission"] = "unknown"
         agent_x, agent_y      = get_agent_loc(self.env[0])
         goal_type, goal_color = get_goal(self.env[0])
         goal_x, goal_y        = get_goal_loc(globs)
         extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-        self.prev_results = [(active, sending, globs, obs, extra)] + [local.recv() for local in self.locals]
+        self.prev_results = [(active, sending, obss, extra)] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def step(self, actions):
@@ -176,8 +186,11 @@ class ParallelEnv(gym.Env):
             active = (active_sender, active_receiver)
             sending = (self.env[0].step_count % self.n == 0, False) if self.conventional else (active_sender, False)
             globs = obs.copy()
-            globs["image"]   = get_global(self.env[0], obs)
-            obs["image"]     = get_local(obs)
+            globs["image"] = get_global(self.env[0], obs)
+            obs["image"]   = get_local(obs)
+            obss = (globs, obs) if not self.archimedean else (obs, globs)
+            if not self.informed_sender:
+                obss[0]["mission"] = "unknown"
             agent_x, agent_y      = get_agent_loc(self.env[0])
             goal_type, goal_color = get_goal(self.env[0])
             goal_x, goal_y        = get_goal_loc(globs)
@@ -190,10 +203,9 @@ class ParallelEnv(gym.Env):
             active_receiver = not active_sender
             active = (active_sender, active_receiver)
             sending = (active_sender, False)
-            obs    = self.prev_results[0][3]
-            globs  = self.prev_results[0][2]
-            extra  = self.prev_results[0][4]
-        self.prev_results = [(active, sending, globs, obs, extra, reward, done)] + [local.recv() for local in self.locals]
+            obss   = self.prev_results[0][2]
+            extra  = self.prev_results[0][3]
+        self.prev_results = [(active, sending, obss, extra, reward, done)] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def render(self):
