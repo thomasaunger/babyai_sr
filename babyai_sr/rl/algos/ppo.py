@@ -7,9 +7,9 @@ class PPOAlgo(BaseAlgo):
     def __init__(self, env, models, num_frames_per_proc=160, discount=0.99, lr=1e-4, beta1=0.9,
                  beta2=0.999, gae_lambda=0.99, entropy_coef=0.01, value_loss_coef=0.5,
                  max_grad_norm=0.5, recurrence=160, adam_eps=1e-5, clip_eps=0.2, epochs=4,
-                 batch_size=5120, preprocess_obss=None, reshape_reward=None, use_comm=True, conventional=False, archimedean=False, informed_sender=False, argmax=False):
+                 batch_size=5120, preprocess_obss=None, reshape_reward=None, use_comm=True, conventional=False, argmax=False):
         
-        super().__init__(env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, conventional, archimedean, informed_sender, argmax)
+        super().__init__(env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, conventional, argmax)
         
         self.lr              = lr
         self.entropy_coef    = entropy_coef
@@ -66,23 +66,11 @@ class PPOAlgo(BaseAlgo):
                     # Compute loss.
                     for m, model in enumerate(self.models):
                         if torch.any(sb.active[:, m]):
-                            if m == 1:
-                                if self.archimedean:
-                                    if self.use_comm:
-                                        model_results = model(sb.globs[sb.active[:, m]], memory[sb.active[:, m], m]*sb.mask[sb.active[:, m], m], msg=sb.message[sb.active[:, m], 0])
-                                    else:
-                                        model_results = model(sb.globs[sb.active[:, m]], memory[sb.active[:, m], m]*sb.mask[sb.active[:, m], m])
-                                else:
-                                    if self.use_comm:
-                                        model_results = model(sb.obs[  sb.active[:, m]], memory[sb.active[:, m], m]*sb.mask[sb.active[:, m], m], msg=sb.message[sb.active[:, m], 0])
-                                    else:
-                                        model_results = model(sb.obs[  sb.active[:, m]], memory[sb.active[:, m], m]*sb.mask[sb.active[:, m], m])
+                            if self.use_comm:
+                                model_results = model(sb.obs[m][sb.active[:, m]], memory[sb.active[:, m], m]*sb.mask[sb.active[:, m], m], msg=sb.message[sb.active[:, m], 0])
                             else:
-                                if not self.informed_sender:
-                                    sb.globs.instr[sb.active[:, m]] *= 0
-                                
-                                model_results = model(sb.globs[sb.active[:, m]], memory[sb.active[:, m], m]*sb.mask[sb.active[:, m], m])
-
+                                model_results = model(sb.obs[m][sb.active[:, m]], memory[sb.active[:, m], m]*sb.mask[sb.active[:, m], m])
+                            
                             memory[sb.active[:, m], m] = model_results["memory"]
                             dist                       = model_results["dist"]
                             dists_speaker              = model_results["dists_speaker"]

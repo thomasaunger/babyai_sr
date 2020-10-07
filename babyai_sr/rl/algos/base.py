@@ -4,7 +4,7 @@ from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList
 
 class BaseAlgo():
-    def __init__(self, env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, conventional, archimedean, informed_sender, argmax):
+    def __init__(self, env, models, num_frames_per_proc, discount, gae_lambda, preprocess_obss, reshape_reward, use_comm, conventional, argmax):
         
         # Store parameters.
         self.env                 = env
@@ -16,9 +16,7 @@ class BaseAlgo():
         self.reshape_reward      = reshape_reward
         self.use_comm            = use_comm
         self.conventional        = conventional
-        self.archimedean         = archimedean
         self.argmax              = argmax
-        self.informed_sender     = informed_sender
         
         # Store helper values.
         self.device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,14 +31,14 @@ class BaseAlgo():
         self.masks      = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
         self.dones      = torch.zeros(*shape[:2], device=self.device, dtype=torch.bool )
         self.activity   = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
+        self.sendings   = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
         self.actions    = torch.zeros(*shape,     device=self.device, dtype=torch.uint8)
         self.values     = torch.zeros(*shape,     device=self.device)
         self.rewards    = torch.zeros(*shape,     device=self.device)
         self.advantages = torch.zeros(*shape,     device=self.device)
         self.log_probs  = torch.zeros(*shape,     device=self.device)
         
-        self.globss = [None]*self.num_frames_per_proc
-        self.obss   = [None]*self.num_frames_per_proc
+        self.obss = [None]*self.num_frames_per_proc
         
         self.memory   = torch.zeros(*shape[1:], self.models[0].memory_size, device=self.device)
         self.memories = torch.zeros(*shape,     self.models[0].memory_size, device=self.device)
@@ -48,7 +46,7 @@ class BaseAlgo():
         self.message  = torch.zeros(*shape[1:], self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         self.messages = torch.zeros(*shape,     self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         
-        active, sending, self.globs, self.obs, extra = self.env.reset()
+        active, sending, self.obs, extra = self.env.reset()
         
         self.active  = torch.tensor(active,  device=self.device, dtype=torch.bool)
         self.sending = torch.tensor(sending, device=self.device, dtype=torch.bool)
@@ -66,36 +64,23 @@ class BaseAlgo():
     
     def collect_experiences(self):
         # Model inputs.
-        memory   = self.memory.clone()
-        message  = self.message.clone()
-
+        memory  = self.memory.clone()
+        message = self.message.clone()
+        
         # Model outputs.
         action   = torch.zeros(self.num_procs, self.num_agents, device=self.device, dtype=torch.uint8)
         value    = torch.zeros(self.num_procs, self.num_agents, device=self.device)
         log_prob = torch.zeros(self.num_procs, self.num_agents, device=self.device)
         
         for f in range(self.num_frames_per_proc):
-            preprocessed_globs = self.preprocess_obss(self.globs, device=self.device)
-            preprocessed_obs   = self.preprocess_obss(self.obs,   device=self.device)
+            preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
             with torch.no_grad():
                 for m, model in enumerate(self.models):
                     if torch.any(self.active[:, m]):
-                        if m == 1:
-                            if self.archimedean:
-                                if self.use_comm:
-                                    model_results = model(preprocessed_globs[self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1), msg=self.message[self.active[:, m], 0])
-                                else:
-                                    model_results = model(preprocessed_globs[self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
-                            else:
-                                if self.use_comm:
-                                    model_results = model(preprocessed_obs[  self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1), msg=self.message[self.active[:, m], 0])
-                                else:
-                                    model_results = model(preprocessed_obs[  self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
+                        if self.use_comm:
+                            model_results = model(preprocessed_obs[self.active[:, m]][m], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1), msg=self.message[self.active[:, m], 0])
                         else:
-                            if not self.informed_sender:
-                                preprocessed_globs.instr[self.active[:, m]] *= 0
-                            
-                            model_results = model(preprocessed_globs[self.active[:, m]], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
+                            model_results = model(preprocessed_obs[self.active[:, m]][m], self.memory[self.active[:, m], m]*self.mask[self.active[:, m], m].unsqueeze(1))
                         
                         memory[self.active[:, m], m] = model_results["memory"]
                         dist                         = model_results["dist"]
@@ -113,12 +98,9 @@ class BaseAlgo():
                         else:
                             log_prob[self.active[:, m], m] = model.speaker_log_prob(dists_speaker, message[self.active[:, m], m])
             
-            active, sending, globs, obs, extra, reward, done = self.env.step(action.cpu().numpy())
+            active, sending, obs, extra, reward, done = self.env.step(action.cpu().numpy())
             
             # Update experience values.
-            self.globss[f]   = self.globs
-            self.globs       = globs
-            
             self.obss[f]     = self.obs
             self.obs         = obs
             
@@ -140,6 +122,9 @@ class BaseAlgo():
             
             self.values[f]   = value
             
+            self.sendings[f] = self.sending
+            self.sending     = torch.tensor(sending, device=self.device, dtype=torch.bool)
+            
             if self.reshape_reward is not None:
                 self.rewards[f, :, 1] = torch.tensor([
                     self.reshape_reward(obs_, action_, reward_, done_)
@@ -159,38 +144,24 @@ class BaseAlgo():
                     self.log_done_counter += 1
                     self.log_return.append(self.log_episode_return[i].item())
                     self.log_num_frames.append(self.log_episode_num_frames[i].item())
-
+            
             self.log_episode_return     *= ~torch.tensor(done, device=self.device, dtype=torch.bool)
             self.log_episode_num_frames *= ~torch.tensor(done, device=self.device, dtype=torch.bool)
             
             # Update activity values.
             self.activity[f] = self.active
             self.active      = torch.tensor(active,  device=self.device, dtype=torch.bool)
-            self.sending     = torch.tensor(sending, device=self.device, dtype=torch.bool)
         
         # Add advantage and return to experiences.
         next_value = torch.zeros(self.num_procs, self.num_agents, device=self.device)
         
-        preprocessed_globs = self.preprocess_obss(self.globs, device=self.device)
-        preprocessed_obs   = self.preprocess_obss(self.obs,   device=self.device)
+        preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
         with torch.no_grad():
             for m, model in enumerate(self.models):
-                if m == 1:
-                    if self.archimedean:
-                        if self.use_comm:
-                            model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=message[:, 0])
-                        else:
-                            model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1))
-                    else:
-                        if self.use_comm:
-                            model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=message[:, 0])
-                        else:
-                            model_results = model(preprocessed_obs,   self.memory[:, m]*self.mask[:, m].unsqueeze(1))
+                if self.use_comm:
+                    model_results = model(preprocessed_obs[:][m], self.memory[:, m]*self.mask[:, m].unsqueeze(1), msg=message[:, 0])
                 else:
-                    if not self.informed_sender:
-                        preprocessed_globs.instr *= 0
-                    
-                    model_results = model(preprocessed_globs, self.memory[:, m]*self.mask[:, m].unsqueeze(1))
+                    model_results = model(preprocessed_obs[:][m], self.memory[:, m]*self.mask[:, m].unsqueeze(1))
                 
                 next_value[:, m] = model_results["value"]
                 dists_speaker    = model_results["dists_speaker"]
@@ -225,10 +196,6 @@ class BaseAlgo():
         # each episode's data is a continuous chunk.
         exps = DictList()
         
-        exps.globs = [self.globss[i][j]
-                      for j in range(self.num_procs)
-                      for i in range(self.num_frames_per_proc)]
-        
         exps.obs = [self.obss[i][j]
                     for j in range(self.num_procs)
                     for i in range(self.num_frames_per_proc)]
@@ -249,6 +216,7 @@ class BaseAlgo():
         
         # For all tensors below, T x P x M -> P x T x M -> (P * T) x M
         exps.active    = self.activity.transpose(  0, 1).reshape(-1, *self.activity.shape[  2:])
+        exps.sending   = self.sendings.transpose(  0, 1).reshape(-1, *self.sendings.shape[  2:])
         exps.action    = self.actions.transpose(   0, 1).reshape(-1, *self.actions.shape[   2:])
         exps.value     = self.values.transpose(    0, 1).reshape(-1, *self.values.shape[    2:])
         exps.reward    = self.rewards.transpose(   0, 1).reshape(-1, *self.rewards.shape[   2:])
@@ -257,8 +225,7 @@ class BaseAlgo():
         exps.log_prob  = self.log_probs.transpose( 0, 1).reshape(-1, *self.log_probs.shape[ 2:])
         
         # Preprocess experiences.
-        exps.globs = self.preprocess_obss(exps.globs, device=self.device)
-        exps.obs   = self.preprocess_obss(exps.obs,   device=self.device)
+        exps.obs = self.preprocess_obss(exps.obs, device=self.device)
         
         # Log some values.
         keep = max(self.log_done_counter, self.num_procs)
