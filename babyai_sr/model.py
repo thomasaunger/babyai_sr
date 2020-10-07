@@ -69,7 +69,7 @@ class Decoder(nn.Module):
 class ACModel(nn.Module):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128, enc_dim=128, dec_dim=128,
-                 len_msg=8, num_symbols=8, all_angles=False):
+                 len_msg=8, num_symbols=8):
         super().__init__()
         
         self.image_dim    = image_dim
@@ -79,7 +79,6 @@ class ACModel(nn.Module):
         self.dec_dim      = dec_dim
         self.len_msg      = len_msg
         self.num_symbols  = num_symbols
-        self.all_angles   = all_angles
         
         self.obs_space = obs_space
 
@@ -182,16 +181,6 @@ class ACModel(nn.Module):
         msg_embedding = self.encoder(msg)
         
         x = torch.transpose(torch.transpose(obs.image, 1, 3), 2, 3)
-        
-        if self.all_angles:
-            width = x.size(3) # must equal height x.size(2)
-            assert x.size(3) == x.size(2)
-            
-            x = x.repeat(1, 1, 2, 2)
-            
-            x[:, :,     0:width, width:     ] = x[:, :,     0:width,     0:width].flip(2).transpose(2, 3)
-            x[:, :, width:     , width:     ] = x[:, :,     0:width, width:     ].flip(2).transpose(2, 3)
-            x[:, :, width:     ,     0:width] = x[:, :, width:     , width:     ].flip(2).transpose(2, 3)
         
         x = self.image_conv(x)
         for controler in self.controllers:
