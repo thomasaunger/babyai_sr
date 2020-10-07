@@ -10,7 +10,9 @@ import datetime
 import torch
 import numpy as np
 
-import babyai.utils as utils
+import babyai.utils    as utils
+
+import babyai_sr.utils as utils_sr
 
 from babyai_sr.arguments import ArgumentParser
 from babyai_sr.rl.algos  import TestAlgo
@@ -38,10 +40,10 @@ for i in range(args.procs):
     env.seed(100 * args.seed + i)
     envs.append(env)
 
-penv = ParallelEnv(envs, args.n, args.conventional)
+penv = ParallelEnv(envs, args.n, args.conventional, args.archimedean, args.informed_sender)
 
 # Define obss preprocessor.
-obss_preprocessor = utils.ObssPreprocessor(args.receiver, envs[0].observation_space)
+obss_preprocessor = utils_sr.CustomObssPreprocessor(args.receiver, envs[0].observation_space)
 
 # Define actor--critic models.
 sender   = utils.load_model(args.sender)
@@ -53,7 +55,7 @@ if torch.cuda.is_available():
 
 # Define actor--critic algorithm.
 reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
-test_algo = TestAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.gae_lambda, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, args.informed_sender, not args.sample)
+test_algo = TestAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.gae_lambda, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, not args.sample)
 
 # Test models.
 sender.eval()

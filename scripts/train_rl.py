@@ -57,8 +57,6 @@ parser.add_argument("--len-message", type=int, default=8,
                     help="lengths of messages (default: 8)")
 parser.add_argument("--num-symbols", type=int, default=8,
                     help="number of symbols (default: 8)")
-parser.add_argument("--single-angle", action="store_true", default=False,
-                    help="let the sender observe the environment from a single angle")
 
 # Training arguments
 parser.add_argument("--log-interval", type=int, default=1,
@@ -101,7 +99,7 @@ for i in range(args.procs):
     env.seed(100 * args.seed + i)
     envs.append(env)
 
-penv = ParallelEnv(envs, args.n, args.conventional)
+penv = ParallelEnv(envs, args.n, args.conventional, args.archimedean, args.informed_sender)
 
 # Define model names.
 suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
@@ -140,7 +138,7 @@ utils.configure_logging(args.receiver)
 logger = logging.getLogger(__name__)
 
 # Define obss preprocessor.
-obss_preprocessor = utils.ObssPreprocessor(args.receiver, envs[0].observation_space, args.pretrained_receiver)
+obss_preprocessor = utils_sr.CustomObssPreprocessor(args.receiver, envs[0].observation_space, args.pretrained_receiver)
 
 # Define actor--critic models.
 sender = utils.load_model(args.sender, raise_not_found=False)
@@ -150,7 +148,7 @@ if sender is None:
     else:
         sender = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
                          args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
-                         args.len_message, args.num_symbols, not args.single_angle)
+                         args.len_message, args.num_symbols)
 
 receiver = utils.load_model(args.receiver, raise_not_found=False)
 if receiver is None:
@@ -174,7 +172,7 @@ reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
 algo = PPOAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.lr, args.beta1,
                args.beta2, args.gae_lambda, args.entropy_coef, args.value_loss_coef,
                args.max_grad_norm, args.recurrence, args.optim_eps, args.clip_eps, args.ppo_epochs,
-               args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional, args.archimedean, args.informed_sender)
+               args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional)
 
 optimizer_sender = utils_sr.load_optimizer(args.sender, raise_not_found=False)
 if optimizer_sender is None:
