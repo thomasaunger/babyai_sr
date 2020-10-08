@@ -5,7 +5,7 @@ import babyai.utils as utils
 from babyai.rl.utils import DictList
 
 
-class ObssDictList(dict):
+class MultiObssDictList(dict):
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
     
@@ -20,7 +20,7 @@ class ObssDictList(dict):
             dict.__getitem__(self, key)[index] = value
 
 
-class CustomObssPreprocessor:
+class MultiObssPreprocessor:
     def __init__(self, model_name, obs_space=None, load_vocab_from=None):
         self.obss_preprocessor = utils.ObssPreprocessor(model_name, obs_space, load_vocab_from)
         self.image_preproc = self.obss_preprocessor.image_preproc
@@ -29,7 +29,7 @@ class CustomObssPreprocessor:
         self.obs_space     = self.obss_preprocessor.obs_space
     
     def __call__(self, obss, device=None):
-        obs_ = ObssDictList()
+        obs_ = MultiObssDictList()
         
         preprocessed_obss = [self.obss_preprocessor(obs, device=device) for obs in zip(*obss)]
         
