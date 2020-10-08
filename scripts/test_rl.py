@@ -43,7 +43,7 @@ for i in range(args.procs):
 penv = ParallelEnv(envs, args.n, args.conventional, args.archimedean, args.informed_sender)
 
 # Define obss preprocessor.
-obss_preprocessor = utils_sr.CustomObssPreprocessor(args.receiver, envs[0].observation_space)
+obss_preprocessor = utils_sr.MultiObssPreprocessor(args.receiver, envs[0].observation_space)
 
 # Define actor--critic models.
 sender   = utils.load_model(args.sender)

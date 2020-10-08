@@ -138,7 +138,7 @@ utils.configure_logging(args.receiver)
 logger = logging.getLogger(__name__)
 
 # Define obss preprocessor.
-obss_preprocessor = utils_sr.CustomObssPreprocessor(args.receiver, envs[0].observation_space, args.pretrained_receiver)
+obss_preprocessor = utils_sr.MultiObssPreprocessor(args.receiver, envs[0].observation_space, args.pretrained_receiver)
 
 # Define actor--critic models.
 sender = utils.load_model(args.sender, raise_not_found=False)
