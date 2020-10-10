@@ -38,25 +38,3 @@ class MultiObssPreprocessor:
         obs_.instr = [preprocessed_obs.instr for preprocessed_obs in preprocessed_obss]
         
         return obs_
-
-
-class ObssPreprocessor:
-    def __init__(self, model_name, obs_space=None, load_vocab_from=None):
-        self.image_preproc = RawImagePreprocessor()
-        self.instr_preproc = InstructionsPreprocessor(model_name, load_vocab_from)
-        self.vocab = self.instr_preproc.vocab
-        self.obs_space = {
-            "image": 147,
-            "instr": self.vocab.max_size
-        }
-
-    def __call__(self, obss, device=None):
-        obs_ = babyai.rl.DictList()
-
-        if "image" in self.obs_space.keys():
-            obs_.image = self.image_preproc(obss, device=device)
-
-        if "instr" in self.obs_space.keys():
-            obs_.instr = self.instr_preproc(obss, device=device)
-
-        return obs_
