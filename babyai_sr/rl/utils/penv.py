@@ -83,6 +83,7 @@ def worker(conn, env, n, conventional, archimedean, informed_sender):
                 active_sender = True if conventional else env.step_count % n == 0
                 active_receiver = not active_sender
                 active = (active_sender, active_receiver)
+                acting = (False, active_receiver)
                 sending = (env.step_count % n == 0, False) if conventional else (active_sender, False)
                 globs = obs.copy()
                 globs["image"] = get_global(env, obs)
@@ -101,15 +102,17 @@ def worker(conn, env, n, conventional, archimedean, informed_sender):
                 active_sender = False
                 active_receiver = not active_sender
                 active = (active_sender, active_receiver)
+                acting = (False, active_receiver)
                 sending = (active_sender, False)
-                obss   = prev_result[2]
-                extra  = prev_result[3]
-            conn.send((active, sending, obss, extra, reward, done))
+                obss   = prev_result[3]
+                extra  = prev_result[4]
+            conn.send((active, acting, sending, obss, extra, reward, done))
         elif cmd == "reset":
             obs = env.reset()
             active_sender = env.step_count % n == 0
             active_receiver = not active_sender
             active = (active_sender, active_receiver)
+            acting = (False, active_receiver)
             sending = (active_sender, False)
             globs = obs.copy()
             globs["image"] = get_global(env, obs)
@@ -121,7 +124,7 @@ def worker(conn, env, n, conventional, archimedean, informed_sender):
             goal_type, goal_color = get_goal(env)
             goal_x, goal_y        = get_goal_loc(globs)
             extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-            conn.send((active, sending, obss, extra))
+            conn.send((active, acting, sending, obss, extra))
         else:
             raise NotImplementedError
 
@@ -158,6 +161,7 @@ class ParallelEnv(gym.Env):
         active_sender = self.env[0].step_count % self.n == 0
         active_receiver = not active_sender
         active = (active_sender, active_receiver)
+        acting = (False, active_receiver)
         sending = (active_sender, False)
         globs = obs.copy()
         globs["image"] = get_global(self.env[0], obs)
@@ -169,7 +173,7 @@ class ParallelEnv(gym.Env):
         goal_type, goal_color = get_goal(self.env[0])
         goal_x, goal_y        = get_goal_loc(globs)
         extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-        self.prev_results = [(active, sending, obss, extra)] + [local.recv() for local in self.locals]
+        self.prev_results = [(active, acting, sending, obss, extra)] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def step(self, actions):
@@ -184,6 +188,7 @@ class ParallelEnv(gym.Env):
             active_sender = True if self.conventional else self.env[0].step_count % self.n == 0
             active_receiver = not active_sender
             active = (active_sender, active_receiver)
+            acting = (False, active_receiver)
             sending = (self.env[0].step_count % self.n == 0, False) if self.conventional else (active_sender, False)
             globs = obs.copy()
             globs["image"] = get_global(self.env[0], obs)
@@ -202,10 +207,11 @@ class ParallelEnv(gym.Env):
             active_sender = False
             active_receiver = not active_sender
             active = (active_sender, active_receiver)
+            acting = (False, active_receiver)
             sending = (active_sender, False)
-            obss   = self.prev_results[0][2]
-            extra  = self.prev_results[0][3]
-        self.prev_results = [(active, sending, obss, extra, reward, done)] + [local.recv() for local in self.locals]
+            obss   = self.prev_results[0][3]
+            extra  = self.prev_results[0][4]
+        self.prev_results = [(active, acting, sending, obss, extra, reward, done)] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def render(self):
