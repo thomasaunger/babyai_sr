@@ -31,6 +31,7 @@ class BaseAlgo():
         self.masks      = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
         self.dones      = torch.zeros(*shape[:2], device=self.device, dtype=torch.bool )
         self.activity   = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
+        self.actings    = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
         self.sendings   = torch.zeros(*shape,     device=self.device, dtype=torch.bool )
         self.actions    = torch.zeros(*shape,     device=self.device, dtype=torch.uint8)
         self.values     = torch.zeros(*shape,     device=self.device)
@@ -46,9 +47,10 @@ class BaseAlgo():
         self.message  = torch.zeros(*shape[1:], self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         self.messages = torch.zeros(*shape,     self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
         
-        active, sending, self.obs, extra = self.env.reset()
+        active, acting, sending, self.obs, extra = self.env.reset()
         
         self.active  = torch.tensor(active,  device=self.device, dtype=torch.bool)
+        self.acting  = torch.tensor(acting,  device=self.device, dtype=torch.bool)
         self.sending = torch.tensor(sending, device=self.device, dtype=torch.bool)
         
         self.extra  = torch.tensor(extra, device=self.device)
@@ -93,12 +95,11 @@ class BaseAlgo():
                         else:
                             message[self.active[:, m]*self.sending[:, m], m] = dists_speaker.sample()[self.sending[self.active[:, m], m]]
                         
-                        if m == 1:
-                            log_prob[self.active[:, m], m] = dist.log_prob(action[self.active[:, m], m])
-                        else:
-                            log_prob[self.active[:, m], m] = model.speaker_log_prob(dists_speaker, message[self.active[:, m], m])
+                        log_prob[self.active[:, m],                    m]  = 0
+                        log_prob[self.active[:, m]*self.acting[ :, m], m]  = dist.log_prob(action[self.active[:, m], m])[self.acting[self.active[:, m], m]]
+                        log_prob[self.active[:, m]*self.sending[:, m], m] += model.speaker_log_prob(dists_speaker, message[self.active[:, m], m])[self.sending[self.active[:, m], m]]
             
-            active, sending, obs, extra, reward, done = self.env.step(action.cpu().numpy())
+            active, acting, sending, obs, extra, reward, done = self.env.step(action.cpu().numpy())
             
             # Update experience values.
             self.obss[f]     = self.obs
@@ -121,6 +122,9 @@ class BaseAlgo():
             self.message     = message
             
             self.values[f]   = value
+            
+            self.actings[f]  = self.acting
+            self.acting      = torch.tensor(acting, device=self.device, dtype=torch.bool)
             
             self.sendings[f] = self.sending
             self.sending     = torch.tensor(sending, device=self.device, dtype=torch.bool)
@@ -216,6 +220,7 @@ class BaseAlgo():
         
         # For all tensors below, T x P x M -> P x T x M -> (P * T) x M
         exps.active    = self.activity.transpose(  0, 1).reshape(-1, *self.activity.shape[  2:])
+        exps.acting    = self.actings.transpose(   0, 1).reshape(-1, *self.actings.shape[  2:])
         exps.sending   = self.sendings.transpose(  0, 1).reshape(-1, *self.sendings.shape[  2:])
         exps.action    = self.actions.transpose(   0, 1).reshape(-1, *self.actions.shape[   2:])
         exps.value     = self.values.transpose(    0, 1).reshape(-1, *self.values.shape[    2:])

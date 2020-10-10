@@ -76,12 +76,13 @@ class PPOAlgo(BaseAlgo):
                             dists_speaker              = model_results["dists_speaker"]
                             value[ sb.active[:, m], m] = model_results["value"]
                             
-                            if m == 1:
-                                entropies[sb.active[:, m], m] = dist.entropy()
-                                log_prob[ sb.active[:, m], m] = dist.log_prob(sb.action[sb.active[:, m], m])
-                            else:
-                                entropies[sb.active[:, m], m] = model.speaker_entropy(dists_speaker)
-                                log_prob[ sb.active[:, m], m] = model.speaker_log_prob(dists_speaker, sb.message[sb.active[:, m], m])
+                            entropies[sb.active[:, m],                  m]  = 0
+                            entropies[sb.active[:, m]*sb.acting[ :, m], m]  = dist.entropy()[sb.acting[sb.active[:, m], m]]
+                            entropies[sb.active[:, m]*sb.sending[:, m], m] += model.speaker_entropy(dists_speaker)[sb.sending[sb.active[:, m], m]]
+                            
+                            log_prob[ sb.active[:, m],                  m]  = 0
+                            log_prob[ sb.active[:, m]*sb.acting[ :, m], m]  = dist.log_prob(sb.action[sb.active[:, m], m])[sb.acting[sb.active[:, m], m]]
+                            log_prob[ sb.active[:, m]*sb.sending[:, m], m] += model.speaker_log_prob(dists_speaker, sb.message[sb.active[:, m], m])[sb.sending[sb.active[:, m], m]]
                     
                     activities = sb.active.sum()
                     
@@ -105,6 +106,11 @@ class PPOAlgo(BaseAlgo):
                     batch_policy_loss += policy_loss.item()
                     batch_value_loss  += value_loss.item()
                     batch_loss        += loss
+                    
+                    # Update memories and messages for next epoch
+
+                    if i < self.recurrence - 1:
+                        exps.memory[inds + i + 1] = memory.detach()
                 
                 # Update batch values.
                 batch_entropy     /= self.recurrence
