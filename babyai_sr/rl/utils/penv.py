@@ -70,61 +70,67 @@ def get_goal_loc(globs):
     
     return goal_x, goal_y
 
+def reset(env, n, conventional, archimedean, informed_sender):
+    obs                   = env.reset()
+    active_sender         = env.step_count % n == 0
+    active_receiver       = not active_sender
+    active                = (active_sender, active_receiver)
+    acting                = (False, active_receiver)
+    sending               = (active_sender, False)
+    globs                 = obs.copy()
+    globs["image"]        = get_global(env, obs)
+    obs["image"]          = get_local(obs)
+    obss                  = (globs, obs) if not archimedean else (obs, globs)
+    if not informed_sender:
+        obss[0]["mission"] = "unknown"
+    agent_x, agent_y      = get_agent_loc(env)
+    goal_type, goal_color = get_goal(env)
+    goal_x, goal_y        = get_goal_loc(globs)
+    extra                 = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
+    return active, acting, sending, obss, extra
+
+def step(env, n, conventional, archimedean, informed_sender, action, prev_result):
+    if prev_result[0][1]:
+        # receiver's frame
+        obs, reward, done, info = env.step(action)
+        done                    = done or 64 <= env.step_count
+        if done:
+            obs = env.reset()
+        active_sender           = True if conventional else env.step_count % n == 0
+        active_receiver         = not active_sender
+        active                  = (active_sender, active_receiver)
+        acting                  = (False, active_receiver)
+        sending                 = (env.step_count % n == 0, False) if conventional else (active_sender, False)
+        globs                   = obs.copy()
+        globs["image"]          = get_global(env, obs)
+        obs["image"]            = get_local(obs)
+        obss                    = (globs, obs) if not archimedean else (obs, globs)
+        if not informed_sender:
+            obss[0]["mission"] = "unknown"
+        agent_x, agent_y        = get_agent_loc(env)
+        goal_type, goal_color   = get_goal(env)
+        goal_x, goal_y          = get_goal_loc(globs)
+        extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
+    else:
+        # sender's frame
+        reward          = 0.0
+        done            = False
+        active_sender   = False
+        active_receiver = not active_sender
+        active          = (active_sender, active_receiver)
+        acting          = (False, active_receiver)
+        sending         = (active_sender, False)
+        obss            = prev_result[3]
+        extra           = prev_result[4]
+    return active, acting, sending, obss, extra, reward, done
+
 def worker(conn, env, n, conventional, archimedean, informed_sender):
     while True:
         cmd, action, prev_result = conn.recv()
         if cmd == "step":
-            if prev_result[0][1]:
-                # receiver's frame
-                obs, reward, done, info = env.step(action)
-                done = done or 64 <= env.step_count
-                if done:
-                    obs = env.reset()
-                active_sender = True if conventional else env.step_count % n == 0
-                active_receiver = not active_sender
-                active = (active_sender, active_receiver)
-                acting = (False, active_receiver)
-                sending = (env.step_count % n == 0, False) if conventional else (active_sender, False)
-                globs = obs.copy()
-                globs["image"] = get_global(env, obs)
-                obs["image"]   = get_local(obs)
-                obss = (globs, obs) if not archimedean else (obs, globs)
-                if not informed_sender:
-                    obss[0]["mission"] = "unknown"
-                agent_x, agent_y      = get_agent_loc(env)
-                goal_type, goal_color = get_goal(env)
-                goal_x, goal_y        = get_goal_loc(globs)
-                extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-            else:
-                # sender's frame
-                reward = 0.0
-                done   = False
-                active_sender = False
-                active_receiver = not active_sender
-                active = (active_sender, active_receiver)
-                acting = (False, active_receiver)
-                sending = (active_sender, False)
-                obss   = prev_result[3]
-                extra  = prev_result[4]
-            conn.send((active, acting, sending, obss, extra, reward, done))
+            conn.send(step(env, n, conventional, archimedean, informed_sender, action, prev_result))
         elif cmd == "reset":
-            obs = env.reset()
-            active_sender = env.step_count % n == 0
-            active_receiver = not active_sender
-            active = (active_sender, active_receiver)
-            acting = (False, active_receiver)
-            sending = (active_sender, False)
-            globs = obs.copy()
-            globs["image"] = get_global(env, obs)
-            obs["image"]   = get_local(obs)
-            obss = (globs, obs) if not archimedean else (obs, globs)
-            if not informed_sender:
-                obss[0]["mission"] = "unknown"
-            agent_x, agent_y      = get_agent_loc(env)
-            goal_type, goal_color = get_goal(env)
-            goal_x, goal_y        = get_goal_loc(globs)
-            extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-            conn.send((active, acting, sending, obss, extra))
+            conn.send(reset(env, n, conventional, archimedean, informed_sender))
         else:
             raise NotImplementedError
 
@@ -157,61 +163,13 @@ class ParallelEnv(gym.Env):
     def reset(self):
         for local in self.locals:
             local.send(("reset", None, None))
-        obs = self.env[0].reset()
-        active_sender = self.env[0].step_count % self.n == 0
-        active_receiver = not active_sender
-        active = (active_sender, active_receiver)
-        acting = (False, active_receiver)
-        sending = (active_sender, False)
-        globs = obs.copy()
-        globs["image"] = get_global(self.env[0], obs)
-        obs["image"]   = get_local(obs)
-        obss = (globs, obs) if not self.archimedean else (obs, globs)
-        if not self.informed_sender:
-            obss[0]["mission"] = "unknown"
-        agent_x, agent_y      = get_agent_loc(self.env[0])
-        goal_type, goal_color = get_goal(self.env[0])
-        goal_x, goal_y        = get_goal_loc(globs)
-        extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-        self.prev_results = [(active, acting, sending, obss, extra)] + [local.recv() for local in self.locals]
+        self.prev_results = [reset(self.env[0], self.n, self.conventional, self.archimedean, self.informed_sender)] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def step(self, actions):
         for local, action, prev_result in zip(self.locals, actions[1:, 1], self.prev_results[1:]):
             local.send(("step", action, prev_result))
-        if self.prev_results[0][0][1]:
-            # receiver's frame
-            obs, reward, done, info = self.env[0].step(actions[0, 1])
-            done = done or 64 <= self.env[0].step_count
-            if done:
-                obs = self.env[0].reset()
-            active_sender = True if self.conventional else self.env[0].step_count % self.n == 0
-            active_receiver = not active_sender
-            active = (active_sender, active_receiver)
-            acting = (False, active_receiver)
-            sending = (self.env[0].step_count % self.n == 0, False) if self.conventional else (active_sender, False)
-            globs = obs.copy()
-            globs["image"] = get_global(self.env[0], obs)
-            obs["image"]   = get_local(obs)
-            obss = (globs, obs) if not self.archimedean else (obs, globs)
-            if not self.informed_sender:
-                obss[0]["mission"] = "unknown"
-            agent_x, agent_y      = get_agent_loc(self.env[0])
-            goal_type, goal_color = get_goal(self.env[0])
-            goal_x, goal_y        = get_goal_loc(globs)
-            extra = (agent_x, agent_y, goal_type, goal_color, goal_x, goal_y)
-        else:
-            # sender's frame
-            reward = 0.0
-            done   = False
-            active_sender = False
-            active_receiver = not active_sender
-            active = (active_sender, active_receiver)
-            acting = (False, active_receiver)
-            sending = (active_sender, False)
-            obss   = self.prev_results[0][3]
-            extra  = self.prev_results[0][4]
-        self.prev_results = [(active, acting, sending, obss, extra, reward, done)] + [local.recv() for local in self.locals]
+        self.prev_results = [step(self.env[0], self.n, self.conventional, self.archimedean, self.informed_sender, actions[0, 1], self.prev_results[0])] + [local.recv() for local in self.locals]
         return zip(*self.prev_results)
 
     def render(self):
