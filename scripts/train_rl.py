@@ -102,105 +102,89 @@ for i in range(args.procs):
 penv = ParallelEnv(envs, args.n, args.conventional, args.archimedean, args.informed_sender)
 
 # Define model names.
-suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-model_name_parts = {
-    "env":    args.env,
-    "algo":   "ppo",
-    "arch":   "expert_filmcnn",
-    "instr":  "gru",
-    "mem":    "mem",
-    "seed":   args.seed,
-    "info":   "",
-    "coef":   "",
-    "suffix": suffix}
+roles       = [               "sender",               "receiver"]
+model_names = [           args.sender,            args.receiver ]
+pretrained  = [args.pretrained_sender, args.pretrained_receiver ]
+for m, model_name in enumerate(model_names):
+    suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+    model_name_parts = {
+        "env":    args.env,
+        "algo":   "ppo",
+        "arch":   "expert_filmcnn",
+        "instr":  "gru",
+        "mem":    "mem",
+        "seed":   args.seed,
+        "info":   "",
+        "coef":   "",
+        "suffix": suffix}
+    
+    model_name_parts["info"] = ("_n%d%s%s%s%s_" + roles[m]) % (args.n, "_no-comm" if args.no_comm else "",
+                                                               "_conventional" if args.conventional else "",
+                                                               "_informed" if args.informed_sender else "",
+                                                               "_archimedean" if args.archimedean else "")
+    default_model_name = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**model_name_parts)
+    if pretrained[m]:
+        default_model_name = pretrained[m] + "_pretrained_" + default_model_name
+    model_names[m] = model_names[m].format(**model_name_parts) if model_name else default_model_name
 
-sender_name_parts         = model_name_parts.copy()
-sender_name_parts["info"] = "_n%d%s%s%s%s_sender" % (args.n, "_no-comm" if args.no_comm else "",
-                                                     "_conventional" if args.conventional else "",
-                                                     "_informed" if args.informed_sender else "",
-                                                     "_archimedean" if args.archimedean else "")
-default_sender_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**sender_name_parts)
-if args.pretrained_sender:
-    default_sender_name = args.pretrained_sender + "_pretrained_" + default_sender_name
-args.sender = args.sender.format(**sender_name_parts) if args.sender else default_sender_name
-
-receiver_name_parts         = model_name_parts.copy()
-receiver_name_parts["info"] = "_n%d%s%s%s%s_receiver" % (args.n, "_no-comm" if args.no_comm else "",
-                                                         "_conventional" if args.conventional else "",
-                                                         "_informed" if args.informed_sender else "",
-                                                         "_archimedean" if args.archimedean else "")
-default_receiver_name       = "{env}_{algo}_{arch}_{instr}_{mem}_seed{seed}{info}{coef}_{suffix}".format(**receiver_name_parts)
-if args.pretrained_receiver:
-    default_receiver_name = args.pretrained_receiver + "_pretrained_" + default_receiver_name
-args.receiver = args.receiver.format(**receiver_name_parts) if args.receiver else default_receiver_name
-
-utils.configure_logging(args.receiver)
-logger = logging.getLogger(__name__)
+loggers = []
+for model_name in model_names[:-1]:
+    loggers.append(utils_sr.configure_logging(model_name))
+loggers.append(utils_sr.configure_logging(model_names[-1], stream=True))
 
 # Define obss preprocessor.
-obss_preprocessor = utils_sr.MultiObssPreprocessor(args.receiver, envs[0].observation_space, args.pretrained_receiver)
+obss_preprocessor = utils_sr.MultiObssPreprocessor(model_names[1], envs[0].observation_space, pretrained[1])
 
 # Define actor--critic models.
-sender = utils.load_model(args.sender, raise_not_found=False)
-if sender is None:
-    if args.pretrained_sender:
-        sender = utils.load_model(args.pretrained_sender, raise_not_found=True)
-    else:
-        sender = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
-                         args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
-                         args.len_message, args.num_symbols)
-
-receiver = utils.load_model(args.receiver, raise_not_found=False)
-if receiver is None:
-    if args.pretrained_receiver:
-        receiver = utils.load_model(args.pretrained_receiver, raise_not_found=True)
-    else:
-        receiver = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
-                           args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
-                           args.len_message, args.num_symbols)
+models = []
+for m, model_name in enumerate(model_names):
+    model = utils.load_model(model_name, raise_not_found=False)
+    if model is None:
+        if pretrained[m]:
+            models.append(utils.load_model(pretrained[m], raise_not_found=True))
+        else:
+            models.append(ACModel(obss_preprocessor.obs_space, envs[0].action_space,
+                          args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
+                          args.len_message, args.num_symbols))
 
 obss_preprocessor.vocab.save()
-utils.save_model(sender,   args.sender  )
-utils.save_model(receiver, args.receiver)
+for m, model in enumerate(models):
+    utils.save_model(model, model_names[m])
 
 if torch.cuda.is_available():
-    sender.cuda()
-    receiver.cuda()
+    for model in models:
+        model.cuda()
 
 # Define actor--critic algorithm.
 reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
-algo = PPOAlgo(penv, [sender, receiver], args.frames_per_proc, args.discount, args.lr, args.beta1,
+algo = PPOAlgo(penv, models, args.frames_per_proc, args.discount, args.lr, args.beta1,
                args.beta2, args.gae_lambda, args.entropy_coef, args.value_loss_coef,
                args.max_grad_norm, args.recurrence, args.optim_eps, args.clip_eps, args.ppo_epochs,
                args.batch_size, obss_preprocessor, reshape_reward, not args.no_comm, args.conventional)
 
-optimizer_sender = utils_sr.load_optimizer(args.sender, raise_not_found=False)
-if optimizer_sender is None:
-    if args.pretrained_sender:
-        algo.optimizers[0].load_state_dict(utils_sr.load_optimizer(args.pretrained_sender, raise_not_found=True).state_dict())
-else:
-    algo.optimizers[0].load_state_dict(optimizer_sender.state_dict())
-
-optimizer_receiver = utils_sr.load_optimizer(args.receiver, raise_not_found=False)
-if optimizer_receiver is None:
-    if args.pretrained_receiver:
-        algo.optimizers[1].load_state_dict(utils_sr.load_optimizer(args.pretrained_receiver, raise_not_found=True).state_dict())
-else:
-    algo.optimizers[1].load_state_dict(optimizer_receiver.state_dict())
-
-utils_sr.save_optimizer(algo.optimizers[0], args.sender  )
-utils_sr.save_optimizer(algo.optimizers[1], args.receiver)
+for m, model_name in enumerate(model_names):
+    optimizer = utils_sr.load_optimizer(model_name, raise_not_found=False)
+    if optimizer is None:
+        if pretrained[m]:
+            algo.optimizers[m].load_state_dict(utils_sr.load_optimizer(pretrained[m], raise_not_found=True).state_dict())
+    else:
+        algo.optimizers[m].load_state_dict(optimizer.state_dict())
+    
+    utils_sr.save_optimizer(algo.optimizers[m], model_name)
 
 # Restore training status.
-status_path = os.path.join(utils.get_log_dir(args.receiver), "status.json")
-if os.path.exists(status_path):
-    with open(status_path, 'r') as src:
-        status = json.load(src)
-else:
-    status = {"i":            0,
-              "num_episodes": 0,
-              "num_frames":   0
-             }
+status_paths = []
+statuses     = []
+for m, model_name in enumerate(model_names):
+    status_paths.append(os.path.join(utils.get_log_dir(model_name), "status.json"))
+    if os.path.exists(status_paths[m]):
+        with open(status_paths[m], 'r') as src:
+            statuses.append(json.load(src))
+    else:
+        statuses.append({"i":            0,
+                         "num_episodes": 0,
+                         "num_frames":   0
+                        })
 
 # Define logger and Tensorboard writer and CSV writer.
 header = (["update", "episodes", "frames", "FPS", "duration"]
@@ -210,108 +194,114 @@ header = (["update", "episodes", "frames", "FPS", "duration"]
           + ["entropy", "value", "policy_loss", "value_loss", "loss", "grad_norm"])
 if args.tb:
     from tensorboardX import SummaryWriter
-
-    writer = SummaryWriter(utils.get_log_dir(args.receiver))
-csv_path = os.path.join(utils.get_log_dir(args.receiver), "log.csv")
-first_created = not os.path.exists(csv_path)
-# we don't buffer data going in the csv log, cause we assume
-# that one update will take much longer that one write to the log
-csv_writer = csv.writer(open(csv_path, 'a', 1))
-if first_created:
-    csv_writer.writerow(header)
+    
+    writers = []
+    for model_name in model_names:
+        writers.append(SummaryWriter(utils.get_log_dir(model_name)))
+csv_writers = []
+for m, model_name in enumerate(model_names):
+    csv_path = os.path.join(utils.get_log_dir(model_name), "log.csv")
+    first_created = not os.path.exists(csv_path)
+    # we don't buffer data going in the csv log, cause we assume
+    # that one update will take much longer than one write to the log
+    csv_writers.append(csv.writer(open(csv_path, 'a', 1)))
+    if first_created:
+        csv_writers[m].writerow(header)
 
 # Log code state, command, availability of CUDA and models.
 babyai_code = list(babyai_sr.__path__)[0]
-try:
-    last_commit = subprocess.check_output(
-        "cd {}; git log -n1".format(babyai_code), shell=True).decode("utf-8")
-    logger.info("LAST COMMIT INFO:")
-    logger.info(last_commit)
-except subprocess.CalledProcessError:
-    logger.info("Could not figure out the last commit")
-try:
-    diff = subprocess.check_output(
-        "cd {}; git diff".format(babyai_code), shell=True).decode("utf-8")
-    if diff:
-        logger.info("GIT DIFF:")
-        logger.info(diff)
-except subprocess.CalledProcessError:
-    logger.info("Could not figure out the last commit")
-logger.info("COMMAND LINE ARGS:")
-logger.info(args)
-logger.info("CUDA available: {}".format(torch.cuda.is_available()))
-logger.info(sender)
-logger.info(receiver)
+for logger in loggers:
+    try:
+        last_commit = subprocess.check_output(
+            "cd {}; git log -n1".format(babyai_code), shell=True).decode("utf-8")
+        logger.info("LAST COMMIT INFO:")
+        logger.info(last_commit)
+    except subprocess.CalledProcessError:
+        logger.info("Could not figure out the last commit")
+    try:
+        diff = subprocess.check_output(
+            "cd {}; git diff".format(babyai_code), shell=True).decode("utf-8")
+        if diff:
+            logger.info("GIT DIFF:")
+            logger.info(diff)
+    except subprocess.CalledProcessError:
+        logger.info("Could not figure out the last commit")
+    logger.info("COMMAND LINE ARGS:")
+    logger.info(args)
+    logger.info("CUDA available: {}".format(torch.cuda.is_available()))
+    for model in models:
+        logger.info(model)
 
-datas = []
+datas = [[] for _ in models]
 
 # Train models.
-sender.train()
-receiver.train()
+for model in models:
+    model.train()
 total_start_time = time.time()
-while status["num_frames"] < args.frames:
+while sum([status["num_frames"] for status in statuses]) < args.frames:
     # Update parameters
     update_start_time = time.time()
     logs = algo.update_parameters()
     update_end_time = time.time()
-
-    status["num_frames"]   += logs["num_frames"]
-    status["num_episodes"] += logs["episodes_done"]
-    status["i"]            += 1
-
+    
+    for m, status in enumerate(statuses):
+        status["num_frames"]   += logs[m]["num_frames"]
+        status["num_episodes"] += logs[m]["episodes_done"]
+        status["i"]            += 1
+    
     # Print logs.
     
     format_str = ("U {} | E {} | F {:06} | FPS {:04.0f} | D {} | R:xsmM {: .2f} {: .2f} {: .2f} {: .2f} | "
-                      "S {:.2f} | F:xsmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | "
-                      "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | ")
-
-    if status["i"] % args.log_interval == 0:
-        total_ellapsed_time = int(time.time() - total_start_time)
-        fps = logs["num_frames"] / (update_end_time - update_start_time)
-        duration = datetime.timedelta(seconds=total_ellapsed_time)
-        return_per_episode = utils.synthesize(logs["return_per_episode"])
-        success_per_episode = utils.synthesize(
-            [1 if r > 0 else 0 for r in logs["return_per_episode"]])
-        num_frames_per_episode = utils.synthesize(logs["num_frames_per_episode"])
-
-        data = [status["i"], status["num_episodes"], status["num_frames"],
-                fps, total_ellapsed_time,
-                *return_per_episode.values(),
-                success_per_episode["mean"],
-                *num_frames_per_episode.values(),
-                logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"],
-                logs["loss"], logs["grad_norm"]]
-        
-        datas.append(data)
-        
-        if not args.buffer:
-            logger.info(format_str.format(*data))
-            if args.tb:
-                assert len(header) == len(data)
-                for key, value in zip(header, data):
-                    writer.add_scalar(key, float(value), status["num_frames"])
-        
-            csv_writer.writerow(data)
+                  "S {:.2f} | F:xsmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | "
+                  "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | ")
     
-    # Save obss preprocessor vocabulary, buffered logs, models and optimizers.
-    if args.save_interval > 0 and status["i"] % args.save_interval == 0:
-        obss_preprocessor.vocab.save()
-        
-        if args.buffer:
-            logger.info("\n" + "\n".join([format_str.format(*data) for data in datas]))
-            if args.tb:
-                for data in datas:
+    if min([status["i"] for status in statuses]) % args.log_interval == 0:
+        for m, log in enumerate(logs):
+            total_ellapsed_time = int(time.time() - total_start_time)
+            fps = log["num_frames"] / (update_end_time - update_start_time)
+            duration = datetime.timedelta(seconds=total_ellapsed_time)
+            return_per_episode = utils.synthesize(log["return_per_episode"])
+            success_per_episode = utils.synthesize(
+                [1 if r > 0 else 0 for r in log["return_per_episode"]])
+            num_frames_per_episode = utils.synthesize(log["num_frames_per_episode"])
+            
+            data = [statuses[m]["i"], statuses[m]["num_episodes"], statuses[m]["num_frames"],
+                    fps, total_ellapsed_time,
+                    *return_per_episode.values(),
+                    success_per_episode["mean"],
+                    *num_frames_per_episode.values(),
+                    log["entropy"], log["value"], log["policy_loss"], log["value_loss"],
+                    log["loss"], log["grad_norm"]]
+            
+            datas[m].append(data)
+            
+            if not args.buffer:
+                loggers[m].info(format_str.format(*data))
+                if args.tb:
                     assert len(header) == len(data)
                     for key, value in zip(header, data):
-                        writer.add_scalar(key, float(value), status["num_frames"])
+                        writer[m].add_scalar(key, float(value), statuses[m]["num_frames"])
             
-            csv_writer.writerows(datas)
-
-        datas.clear()
+                csv_writers[m].writerow(data)
+    
+    # Save obss preprocessor vocabulary, buffered logs, models and optimizers.
+    if args.save_interval > 0 and min([status["i"] for status in statuses]) % args.save_interval == 0:
+        obss_preprocessor.vocab.save()
         
-        with open(status_path, 'w') as dst:
-            json.dump(status, dst)
-            utils.save_model(sender,   args.sender  )
-            utils.save_model(receiver, args.receiver)
-            utils_sr.save_optimizer(algo.optimizers[0], args.sender  )
-            utils_sr.save_optimizer(algo.optimizers[1], args.receiver)
+        for m, _ in enumerate(logs):
+            if args.buffer:
+                loggers[m].info("\n" + "\n".join([format_str.format(*data) for data in datas[m]]))
+                if args.tb:
+                    for data in datas[m]:
+                        assert len(header) == len(data)
+                        for key, value in zip(header, data):
+                            writer[m].add_scalar(key, float(value), statuses[m]["num_frames"])
+                
+                csv_writers[m].writerows(datas[m])
+            
+            datas[m].clear()
+            
+            with open(status_paths[m], 'w') as dst:
+                json.dump(statuses[m], dst)
+                utils.save_model(            models[    m], model_names[m])
+                utils_sr.save_optimizer(algo.optimizers[m], model_names[m])
