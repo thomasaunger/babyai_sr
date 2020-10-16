@@ -44,8 +44,8 @@ class BaseAlgo():
         self.memory   = torch.zeros(*shape[1:], self.models[0].memory_size, device=self.device)
         self.memories = torch.zeros(*shape,     self.models[0].memory_size, device=self.device)
         
-        self.message  = torch.zeros(*shape[1:], self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
-        self.messages = torch.zeros(*shape,     self.models[0].len_msg, self.models[0].num_symbols, device=self.device, dtype=torch.float)
+        self.message  = torch.zeros(*shape[1:], self.models[0].len_msg, self.models[0].num_symbols, device=self.device)
+        self.messages = torch.zeros(*shape,     self.models[0].len_msg, self.models[0].num_symbols, device=self.device)
         
         active, acting, sending, self.obs, extra = self.env.reset()
         
@@ -53,16 +53,17 @@ class BaseAlgo():
         self.acting  = torch.tensor(acting,  device=self.device, dtype=torch.bool)
         self.sending = torch.tensor(sending, device=self.device, dtype=torch.bool)
         
-        self.extra  = torch.tensor(extra, device=self.device)
+        self.extra  = torch.tensor(extra,                                      device=self.device)
         self.extras = torch.zeros(self.num_frames_per_proc, *self.extra.shape, device=self.device)
         
         # Initialize log values.
-        self.log_episode_return     = torch.zeros(self.num_procs, device=self.device)
-        self.log_episode_num_frames = torch.zeros(self.num_procs, device=self.device)
+        self.log_episode_return       = torch.zeros(self.num_procs,  device=self.device)
+        self.log_episode_num_frames   = torch.zeros(*shape[1:],      device=self.device)
+        self.log_num_frames_per_agent = torch.zeros(self.num_agents, device=self.device, dtype=torch.long)
         
-        self.log_done_counter = 0
-        self.log_return       = [0] * self.num_procs
-        self.log_num_frames   = [0] * self.num_procs
+        self.log_done_counter =   0
+        self.log_return       =  [0] * self.num_procs
+        self.log_num_frames   = [[0] * self.num_procs for _ in range(self.num_agents)]
     
     def collect_experiences(self):
         # Model inputs.
@@ -91,7 +92,7 @@ class BaseAlgo():
                         
                         action[ self.active[:, m], m] = dist.sample().byte()
                         if self.argmax:
-                            message[self.active[:, m]*self.sending[:, m], m] = torch.zeros(message[self.active[:, m], m].size()).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)[self.sending[self.active[:, m], m]]
+                            message[self.active[:, m]*self.sending[:, m], m] = torch.zeros(message[self.active[:, m], m].size(), device=self.device).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)[self.sending[self.active[:, m], m]]
                         else:
                             message[self.active[:, m]*self.sending[:, m], m] = dists_speaker.sample()[self.sending[self.active[:, m], m]]
                         
@@ -140,17 +141,18 @@ class BaseAlgo():
             self.log_probs[f] = log_prob
             
             # Update log values.
-            self.log_episode_return     += torch.tensor(reward, device=self.device)
-            self.log_episode_num_frames += self.active[:, 1]
+            self.log_episode_return       += torch.tensor(reward, device=self.device)
+            self.log_episode_num_frames   += self.active
+            self.log_num_frames_per_agent += self.active.sum(0)
             
             for i, done_ in enumerate(done):
                 if done_:
                     self.log_done_counter += 1
                     self.log_return.append(self.log_episode_return[i].item())
-                    self.log_num_frames.append(self.log_episode_num_frames[i].item())
+                    [self.log_num_frames[m].append(self.log_episode_num_frames[i, m].item()) for m in range(self.num_agents)]
             
             self.log_episode_return     *= ~torch.tensor(done, device=self.device, dtype=torch.bool)
-            self.log_episode_num_frames *= ~torch.tensor(done, device=self.device, dtype=torch.bool)
+            self.log_episode_num_frames *= ~torch.tensor(done, device=self.device, dtype=torch.bool).unsqueeze(1)
             
             # Update activity values.
             self.activity[f] = self.active
@@ -171,7 +173,7 @@ class BaseAlgo():
                 dists_speaker    = model_results["dists_speaker"]
                 
                 if self.argmax:
-                    message[self.active[:, m]*self.sending[:, m], m] = torch.zeros(message[:, m].size()).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)[self.active[:, m]*self.sending[:, m]]
+                    message[self.active[:, m]*self.sending[:, m], m] = torch.zeros(message[:, m].size(), device=self.device).scatter(-1, dists_speaker.logits.argmax(-1, keepdim=True), 1)[self.active[:, m]*self.sending[:, m]]
                 else:
                     message[self.active[:, m]*self.sending[:, m], m] = dists_speaker.sample()[self.active[:, m]*self.sending[:, m]]
         
@@ -220,7 +222,7 @@ class BaseAlgo():
         
         # For all tensors below, T x P x M -> P x T x M -> (P * T) x M
         exps.active    = self.activity.transpose(  0, 1).reshape(-1, *self.activity.shape[  2:])
-        exps.acting    = self.actings.transpose(   0, 1).reshape(-1, *self.actings.shape[  2:])
+        exps.acting    = self.actings.transpose(   0, 1).reshape(-1, *self.actings.shape[   2:])
         exps.sending   = self.sendings.transpose(  0, 1).reshape(-1, *self.sendings.shape[  2:])
         exps.action    = self.actions.transpose(   0, 1).reshape(-1, *self.actions.shape[   2:])
         exps.value     = self.values.transpose(    0, 1).reshape(-1, *self.values.shape[    2:])
@@ -235,15 +237,17 @@ class BaseAlgo():
         # Log some values.
         keep = max(self.log_done_counter, self.num_procs)
         
-        log = {
+        logs = [{
             "return_per_episode":     self.log_return[-keep:],
-            "num_frames_per_episode": self.log_num_frames[-keep:],
-            "num_frames":             self.num_frames,
+            "num_frames_per_episode": self.log_num_frames[m][-keep:],
+            "num_frames":             self.log_num_frames_per_agent[m].item(),
             "episodes_done":          self.log_done_counter,
-        }
+        } for m in range(self.num_agents)]
+        
+        self.log_num_frames_per_agent *= 0
         
         self.log_done_counter = 0
         self.log_return       = self.log_return[-self.num_procs:]
-        self.log_num_frames   = self.log_num_frames[-self.num_procs:]
-
-        return exps, log
+        self.log_num_frames   = [self.log_num_frames[m][-self.num_procs:] for m in range(self.num_agents)]
+        
+        return exps, logs
