@@ -146,6 +146,8 @@ for m, model_name in enumerate(model_names):
             models.append(ACModel(obss_preprocessor.obs_space, envs[0].action_space,
                           args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
                           args.len_message, args.num_symbols))
+    else:
+        models.append(model)
 
 obss_preprocessor.vocab.save()
 for m, model in enumerate(models):
