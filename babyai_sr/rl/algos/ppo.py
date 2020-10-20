@@ -46,7 +46,7 @@ class PPOAlgo(BaseAlgo):
         for _ in range(self.epochs):
             for inds in self._get_batches_starting_indexes():
                 # Initialize values.
-                batch_active      = torch.zeros(self.num_agents, device=self.device)
+                batch_active      = torch.zeros(self.num_agents, device=self.device, dtype=torch.long)
                 batch_entropy     = torch.zeros(self.num_agents, device=self.device)
                 batch_value       = torch.zeros(self.num_agents, device=self.device)
                 batch_policy_loss = torch.zeros(self.num_agents, device=self.device)
