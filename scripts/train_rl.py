@@ -14,7 +14,6 @@ import datetime
 import torch
 import subprocess
 
-import babyai
 import babyai.utils    as utils
 
 import babyai_sr
@@ -211,18 +210,18 @@ for m, model_name in enumerate(model_names):
         csv_writers[m].writerow(header)
 
 # Log code state, command, availability of CUDA and models.
-babyai_code = list(babyai_sr.__path__)[0]
+babyai_sr_code = list(babyai_sr.__path__)[0]
 for logger in loggers:
     try:
         last_commit = subprocess.check_output(
-            "cd {}; git log -n1".format(babyai_code), shell=True).decode("utf-8")
+            "cd {}; git log -n1".format(babyai_sr_code), shell=True).decode("utf-8")
         logger.info("LAST COMMIT INFO:")
         logger.info(last_commit)
     except subprocess.CalledProcessError:
         logger.info("Could not figure out the last commit")
     try:
         diff = subprocess.check_output(
-            "cd {}; git diff".format(babyai_code), shell=True).decode("utf-8")
+            "cd {}; git diff".format(babyai_sr_code), shell=True).decode("utf-8")
         if diff:
             logger.info("GIT DIFF:")
             logger.info(diff)
