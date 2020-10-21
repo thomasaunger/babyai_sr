@@ -1,6 +1,6 @@
 import torch
 
-import babyai.utils as utils
+import babyai.utils
 
 from babyai.rl.utils import DictList
 
@@ -28,7 +28,7 @@ class MultiObssPreprocessor:
         if load_vocabs_from is None:
             load_vocabs_from = [None]*len(model_names)
         
-        self.obss_preprocessors = [utils.ObssPreprocessor(model_name, obs_spaces[m], load_vocabs_from[m]) for m, model_name in enumerate(model_names)]
+        self.obss_preprocessors = [babyai.utils.ObssPreprocessor(model_name, obs_spaces[m], load_vocabs_from[m]) for m, model_name in enumerate(model_names)]
         self.image_preprocs = [obss_preprocessor.image_preproc for obss_preprocessor in self.obss_preprocessors]
         self.instr_preprocs = [obss_preprocessor.instr_preproc for obss_preprocessor in self.obss_preprocessors]
         self.vocabs         = [obss_preprocessor.vocab         for obss_preprocessor in self.obss_preprocessors]

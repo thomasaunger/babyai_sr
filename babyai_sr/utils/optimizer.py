@@ -1,11 +1,11 @@
 import os
 import torch
 
-import babyai.utils as utils
+import babyai.utils
 
 
 def get_optimizer_path(model_name):
-    return os.path.join(utils.get_model_dir(model_name), "optimizer.pt")
+    return os.path.join(babyai.utils.get_model_dir(model_name), "optimizer.pt")
 
 
 def load_optimizer(model_name, raise_not_found=True):
@@ -23,5 +23,5 @@ def load_optimizer(model_name, raise_not_found=True):
 
 def save_optimizer(optimizer, model_name):
     path = get_optimizer_path(model_name)
-    utils.create_folders_if_necessary(path)
+    babyai.utils.create_folders_if_necessary(path)
     torch.save(optimizer, path)
