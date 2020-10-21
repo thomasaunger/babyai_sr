@@ -132,7 +132,7 @@ for model_name in model_names[:-1]:
 loggers.append(utils_sr.configure_logging(model_names[-1], stream=True))
 
 # Define obss preprocessor.
-obss_preprocessor = utils_sr.MultiObssPreprocessor(model_names[1], envs[0].observation_space, pretrained[1])
+obss_preprocessor = utils_sr.MultiObssPreprocessor(model_names, [envs[0].observation_space for _ in model_names], pretrained)
 
 # Define actor--critic models.
 models = []
@@ -142,14 +142,15 @@ for m, model_name in enumerate(model_names):
         if pretrained[m]:
             models.append(utils.load_model(pretrained[m], raise_not_found=True))
         else:
-            models.append(ACModel(obss_preprocessor.obs_space, envs[0].action_space,
+            models.append(ACModel(obss_preprocessor.obs_spaces[m], envs[0].action_space,
                           args.image_dim, args.memory_dim, args.instr_dim, args.enc_dim, args.dec_dim,
                           args.len_message, args.num_symbols))
     else:
         models.append(model)
 
-obss_preprocessor.vocab.save()
+
 for m, model in enumerate(models):
+    obss_preprocessor.vocabs[m].save()
     utils.save_model(model, model_names[m])
 
 if torch.cuda.is_available():
@@ -287,8 +288,6 @@ while sum([status["num_frames"] for status in statuses]) < args.frames:
     
     # Save obss preprocessor vocabulary, buffered logs, models and optimizers.
     if args.save_interval > 0 and min([status["i"] for status in statuses]) % args.save_interval == 0:
-        obss_preprocessor.vocab.save()
-        
         for m, _ in enumerate(logs):
             if args.buffer:
                 loggers[m].info("\n" + "\n".join([format_str.format(*data) for data in datas[m]]))
@@ -302,6 +301,7 @@ while sum([status["num_frames"] for status in statuses]) < args.frames:
             
             datas[m].clear()
             
+            obss_preprocessor.vocabs[m].save()
             with open(status_paths[m], 'w') as dst:
                 json.dump(statuses[m], dst)
                 utils.save_model(            models[    m], model_names[m])
