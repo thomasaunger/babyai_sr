@@ -21,17 +21,23 @@ class MultiObssDictList(dict):
 
 
 class MultiObssPreprocessor:
-    def __init__(self, model_name, obs_space=None, load_vocab_from=None):
-        self.obss_preprocessor = utils.ObssPreprocessor(model_name, obs_space, load_vocab_from)
-        self.image_preproc = self.obss_preprocessor.image_preproc
-        self.instr_preproc = self.obss_preprocessor.instr_preproc
-        self.vocab         = self.obss_preprocessor.vocab
-        self.obs_space     = self.obss_preprocessor.obs_space
+    def __init__(self, model_names, obs_spaces=None, load_vocabs_from=None):
+        if obs_spaces is None:
+            obs_spaces = [None]*len(model_names)
+        
+        if load_vocabs_from is None:
+            load_vocabs_from = [None]*len(model_names)
+        
+        self.obss_preprocessors = [utils.ObssPreprocessor(model_name, obs_spaces[m], load_vocabs_from[m]) for m, model_name in enumerate(model_names)]
+        self.image_preprocs = [obss_preprocessor.image_preproc for obss_preprocessor in self.obss_preprocessors]
+        self.instr_preprocs = [obss_preprocessor.instr_preproc for obss_preprocessor in self.obss_preprocessors]
+        self.vocabs         = [obss_preprocessor.vocab         for obss_preprocessor in self.obss_preprocessors]
+        self.obs_spaces     = [obss_preprocessor.obs_space     for obss_preprocessor in self.obss_preprocessors]
     
     def __call__(self, obss, device=None):
         obs_ = MultiObssDictList()
         
-        preprocessed_obss = [self.obss_preprocessor(obs, device=device) for obs in zip(*obss)]
+        preprocessed_obss = [self.obss_preprocessors[m](obs, device=device) for m, obs in enumerate(zip(*obss))]
         
         obs_.image = [preprocessed_obs.image for preprocessed_obs in preprocessed_obss]
         
